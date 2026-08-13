@@ -27,7 +27,8 @@ def main(argv=None) -> int:
     p_agent.add_argument("--config", default="agents.yaml")
 
     sub.add_parser("ingress", help="启动网关（P6 实现）")
-    sub.add_parser("orchestrator", help="启动编排器（P5 实现）")
+    p_orch = sub.add_parser("orchestrator", help="启动编排器")
+    p_orch.add_argument("--config", default="agents.yaml")
 
     args = p.parse_args(argv)
 
@@ -39,8 +40,12 @@ def main(argv=None) -> int:
         load_dotenv()
         asyncio.run(cmd_agent(args))
         return 0
-    if args.cmd in ("ingress", "orchestrator"):
-        print(f"{args.cmd} 尚未实现（P5/P6）")
+    if args.cmd == "orchestrator":
+        load_dotenv()
+        asyncio.run(cmd_orchestrator(args))
+        return 0
+    if args.cmd == "ingress":
+        print("ingress 尚未实现（P6）")
         return 0
     return 0
 
@@ -94,6 +99,20 @@ async def cmd_agent(args) -> None:
     print(f"agent '{cfg.agent.name}' 已启动，监听 a2a.rpc.{cfg.agent.name}")
     try:
         await asyncio.Event().wait()  # 常驻
+    finally:
+        await rt.nc.close()
+
+
+async def cmd_orchestrator(args) -> None:
+    from a2amesh.config import Config
+    from a2amesh.orchestrator.orchestrator import OrchestratorRuntime
+
+    cfg = Config.load(args.config)
+    rt = OrchestratorRuntime(cfg)
+    await rt.start()
+    print("orchestrator 已启动，监听 a2a.rpc.orchestrator")
+    try:
+        await asyncio.Event().wait()
     finally:
         await rt.nc.close()
 
