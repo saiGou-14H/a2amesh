@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
+import time
 from uuid import uuid4
 
 import nats
@@ -21,8 +23,11 @@ from a2amesh.tools.registry import ToolRegistry
 
 
 class AgentRuntime:
-    def __init__(self, cfg: Config):
+    def __init__(self, cfg: Config, adapters: dict | None = None):
         self.cfg = cfg
+        self._adapters_override = adapters
+        self.log = logging.LoggerAdapter(
+            logging.getLogger("a2amesh.agent"), {"agent": cfg.agent.name})
         self.nc: nats.NATS | None = None
         self.tools = ToolRegistry.global_instance()
         self.executor: Executor | None = None
@@ -32,6 +37,8 @@ class AgentRuntime:
         self._cancels: dict[str, asyncio.Event] = {}
 
     async def start(self):
+        from a2amesh.logging_setup import setup_logging
+        setup_logging(self.cfg.observability.log_level)
         seed = os.environ.get(self.cfg.nats.nkey_seed_env)
         kwargs = {"nkeys_seed_str": seed} if seed else {}
         self.nc = await nats.connect(self.cfg.nats.url, **kwargs)
@@ -40,9 +47,11 @@ class AgentRuntime:
         self.tools.load_custom(self.cfg.agent.tools_dir)
         await self.tools.connect_mcp(self.cfg.mcp)
 
-        adapters = detect_adapters()
-        allowed = set(self.cfg.agent.runtimes)
-        adapters = {k: v for k, v in adapters.items() if k in allowed}
+        if self._adapters_override:
+            adapters = self._adapters_override
+        else:
+            allowed = set(self.cfg.agent.runtimes)
+            adapters = {k: v for k, v in detect_adapters().items() if k in allowed}
         self.executor = Executor(adapters, self.cfg.agent.default_runtime,
                                  timeout=self.cfg.agent.task_timeout_seconds)
         self.server = MeshServer(self.nc, self.cfg.agent.name, handler=self)
@@ -72,15 +81,31 @@ class AgentRuntime:
         runtime = meta.get("runtime") or self.cfg.agent.default_runtime
         if runtime not in self.executor.adapters:
             raise JsonRpcError(UNAVAILABLE, f"runtime not available: {runtime}")
-        task_id = uuid4().hex
+        task_id = meta.get("taskId") or uuid4().hex
         text = "".join(p.text for p in msg.parts if isinstance(p, TextPart))
-        res = await self.executor.run(runtime, text, meta.get("workdir"), meta,
-                                      session_id=meta.get("sessionId"))
+        try:
+            res = await self.executor.run(runtime, text, meta.get("workdir"), meta,
+                                          session_id=meta.get("sessionId"))
+        except Exception as e:
+            self.log.error("task failed: %s", e, extra={"task_id": task_id})
+            await self._to_dlq(task_id, str(e))
+            return {"id": task_id, "status": {"state": "failed"},
+                    "artifacts": [{"artifactId": "a1",
+                                   "parts": [{"kind": "text", "text": f"error: {e}"}]}]}
         return {
             "id": task_id,
             "status": {"state": "completed" if res.ok else "failed"},
             "artifacts": [{"artifactId": "a1", "parts": [{"kind": "text", "text": res.output}]}],
         }
+
+    async def _to_dlq(self, task_id: str, error: str):
+        """终失败任务进死信队列 a2a.dlq.<agent>。"""
+        payload = json.dumps({"task_id": task_id, "error": error,
+                              "ts": int(time.time())}).encode()
+        try:
+            await self.nc.publish(f"a2a.dlq.{self.cfg.agent.name}", payload)
+        except Exception:
+            self.log.warning("dlq publish failed")
 
     async def handle_task_stream(self, params: dict, req_msg) -> dict:
         msg = Message(**params["message"])
@@ -88,21 +113,23 @@ class AgentRuntime:
         runtime = meta.get("runtime") or self.cfg.agent.default_runtime
         if runtime not in self.executor.adapters:
             raise JsonRpcError(UNAVAILABLE, f"runtime not available: {runtime}")
-        task_id = uuid4().hex
-        await self.server.publish_stream(task_id, {"kind": "task-id", "id": task_id})
+        task_id = meta.get("taskId") or uuid4().hex
+        ctx = meta.get("sessionId") or task_id
+        await self.server.publish_stream(task_id, {"kind": "task-id", "id": task_id, "contextId": ctx})
         cancel_evt = asyncio.Event()
         self._cancels[task_id] = cancel_evt
         text = "".join(p.text for p in msg.parts if isinstance(p, TextPart))
 
         async def on_stream(evt):
-            await self.server.publish_stream(task_id, {**evt, "taskId": task_id})
+            await self.server.publish_stream(task_id, {**evt, "taskId": task_id, "contextId": ctx})
 
         res = await self.executor.run(runtime, text, meta.get("workdir"), meta,
                                       session_id=meta.get("sessionId"),
                                       on_stream=on_stream, cancel_evt=cancel_evt)
         state = "canceled" if cancel_evt.is_set() else ("completed" if res.ok else "failed")
-        await self.server.publish_stream(task_id, {"kind": "status-update",
-                                                   "status": {"state": state}, "final": True})
+        await self.server.publish_stream(task_id, {"kind": "status-update", "taskId": task_id,
+                                                   "contextId": ctx, "status": {"state": state},
+                                                   "final": True})
         self._cancels.pop(task_id, None)
         return {"id": task_id}
 
