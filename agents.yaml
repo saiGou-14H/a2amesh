@@ -1,0 +1,20 @@
+nats:
+  url: nats://127.0.0.1:4222
+  nkey_seed_env: A2AMESH_NKEY_SEED
+
+agent:
+  name: win1
+  description: "本地开发 agent"
+  default_runtime: hermes
+  workdir: "."
+  runtimes: [hermes, codex, claude, opencode]
+  tools_dir: ./tools
+  public_tools: [read_file, list_dir]
+  session_ttl_seconds: 86400
+  task_timeout_seconds: 600
+
+mcp: []
+
+observability:
+  otlp_endpoint: ""
+  log_level: INFO

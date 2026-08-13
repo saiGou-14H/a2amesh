@@ -48,8 +48,6 @@ class AgentRuntime:
         self.server = MeshServer(self.nc, self.cfg.agent.name, handler=self)
         self.client = MeshClient(self.nc)
         await self.server.start()
-        await self._publish_card()
-        asyncio.create_task(self._heartbeat_loop())
 
     # ---- AgentCard ----
 
@@ -65,17 +63,6 @@ class AgentRuntime:
             skills=[Skill(id=t.name, name=t.name, description=t.description)
                     for t in self.tools.list() if t.public],
         )
-
-    async def _publish_card(self):
-        await self.nc.publish(
-            f"a2a.cards.{self.cfg.agent.name}",
-            json.dumps(self.card().model_dump()).encode(),
-        )
-
-    async def _heartbeat_loop(self):
-        while True:
-            await asyncio.sleep(15)
-            await self._publish_card()
 
     # ---- 处理任务（被调度） ----
 
