@@ -75,8 +75,9 @@ def cmd_bootstrap(args) -> int:
         print("先运行 a2amesh init")
         return 1
     sk = nacl.signing.SigningKey.generate()
-    seed = nkeys.encode_seed(bytes(sk), nkeys.PREFIX_BYTE_USER).decode()
-    kp = nkeys.from_seed(seed)
+    seed_bytes = nkeys.encode_seed(bytes(sk), nkeys.PREFIX_BYTE_USER)
+    seed = seed_bytes.decode()  # str 用于 .env / nats-py
+    kp = nkeys.from_seed(seed_bytes)  # bytes 用于 from_seed
     set_key(str(env_path), args.env, seed)
     print(f"seed 已写入 {env_path}（{args.env}）")
     print(f"public key（交给 NATS 管理员登记到 nats.conf）: {kp.public_key.decode()}")

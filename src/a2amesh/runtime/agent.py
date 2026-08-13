@@ -33,7 +33,7 @@ class AgentRuntime:
 
     async def start(self):
         seed = os.environ.get(self.cfg.nats.nkey_seed_env)
-        kwargs = {"nkeys_seed": seed} if seed else {}
+        kwargs = {"nkeys_seed_str": seed} if seed else {}
         self.nc = await nats.connect(self.cfg.nats.url, **kwargs)
 
         self.tools.load_builtin()

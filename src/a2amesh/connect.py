@@ -12,5 +12,5 @@ from a2amesh.config import Config
 async def connect(cfg: Config):
     load_dotenv()
     seed = os.environ.get(cfg.nats.nkey_seed_env)
-    kwargs = {"nkeys_seed": seed} if seed else {}
+    kwargs = {"nkeys_seed_str": seed} if seed else {}
     return await nats.connect(cfg.nats.url, **kwargs)

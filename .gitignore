@@ -8,3 +8,4 @@ venv/
 .pytest_cache/
 dist/
 build/
+nats/nats.test.conf
