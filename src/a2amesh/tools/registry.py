@@ -37,6 +37,8 @@ class ToolRegistry:
             return
         for f in p.glob("*.py"):
             spec = importlib.util.spec_from_file_location(f"a2amesh_custom_{f.stem}", f)
+            if spec is None or spec.loader is None:
+                continue
             mod = importlib.util.module_from_spec(spec)
             sys.modules[spec.name] = mod
             spec.loader.exec_module(mod)  # @tool 装饰器自动注册

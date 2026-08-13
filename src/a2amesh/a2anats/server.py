@@ -11,9 +11,13 @@ class MeshServer:
         self.nc = nc
         self.name = agent_name
         self.handler = handler
+        self._service = None
 
     async def start(self):
-        await self.nc.add_service(self.name, version="1.0.0")
+        from nats import micro
+        self._service = await micro.add_service(
+            self.nc, name=self.name, version="1.0.0",
+            description="A2AMesh agent")
         await self.nc.subscribe(f"a2a.rpc.{self.name}", cb=self._on_rpc)
         await self.nc.subscribe(f"a2a.cards.{self.name}", cb=self._on_card)
 

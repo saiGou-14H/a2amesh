@@ -24,7 +24,7 @@ class AgentRuntime:
     def __init__(self, cfg: Config):
         self.cfg = cfg
         self.nc: nats.NATS | None = None
-        self.tools = ToolRegistry()
+        self.tools = ToolRegistry.global_instance()
         self.executor: Executor | None = None
         self.server: MeshServer | None = None
         self.client: MeshClient | None = None
@@ -32,8 +32,9 @@ class AgentRuntime:
         self._cancels: dict[str, asyncio.Event] = {}
 
     async def start(self):
-        seed = os.environ[self.cfg.nats.nkey_seed_env]
-        self.nc = await nats.connect(self.cfg.nats.url, nkeys_seed=seed)
+        seed = os.environ.get(self.cfg.nats.nkey_seed_env)
+        kwargs = {"nkeys_seed": seed} if seed else {}
+        self.nc = await nats.connect(self.cfg.nats.url, **kwargs)
 
         self.tools.load_builtin()
         self.tools.load_custom(self.cfg.agent.tools_dir)

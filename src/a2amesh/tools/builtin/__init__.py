@@ -5,8 +5,8 @@ import asyncio
 import os
 from pathlib import Path
 
-from .decorator import tool
-from .registry import ToolRegistry
+from ..base import Tool
+from ..registry import ToolRegistry
 
 
 async def _read_file(path: str) -> dict:
@@ -27,21 +27,27 @@ async def _run_shell(command: str) -> dict:
             "exit_code": proc.returncode}
 
 
-async def _list_dir(path: str) -> dict:
-    return {"entries": os.listdir(path or ".")}
+async def _list_dir(path: str = ".") -> dict:
+    return {"entries": os.listdir(path)}
 
 
 def register_all(registry: ToolRegistry):
-    registry.register(tool("read_file", "读取文件内容",
-                           {"type": "object", "properties": {"path": {"type": "string"}},
-                            "required": ["path"]})(_read_file))
-    registry.register(tool("write_file", "写文件",
-                           {"type": "object", "required": ["path", "content"],
-                            "properties": {"path": {"type": "string"}, "content": {"type": "string"}}},
-                           risk="medium")(_write_file))
-    registry.register(tool("run_shell", "执行 shell 命令",
-                           {"type": "object", "required": ["command"],
-                            "properties": {"command": {"type": "string"}}},
-                           risk="high")(_run_shell))
-    registry.register(tool("list_dir", "列出目录",
-                           {"type": "object", "properties": {"path": {"type": "string"}}})(_list_dir))
+    registry.register(Tool(
+        name="read_file", description="读取文件内容",
+        parameters={"type": "object", "properties": {"path": {"type": "string"}},
+                    "required": ["path"]},
+        source="builtin", handler=_read_file))
+    registry.register(Tool(
+        name="write_file", description="写文件",
+        parameters={"type": "object", "required": ["path", "content"],
+                    "properties": {"path": {"type": "string"}, "content": {"type": "string"}}},
+        source="builtin", risk="medium", handler=_write_file))
+    registry.register(Tool(
+        name="run_shell", description="执行 shell 命令",
+        parameters={"type": "object", "required": ["command"],
+                    "properties": {"command": {"type": "string"}}},
+        source="builtin", risk="high", handler=_run_shell))
+    registry.register(Tool(
+        name="list_dir", description="列出目录",
+        parameters={"type": "object", "properties": {"path": {"type": "string"}}},
+        source="builtin", handler=_list_dir))

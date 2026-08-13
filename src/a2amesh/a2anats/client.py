@@ -14,14 +14,29 @@ class MeshClient:
         self.nc = nc
 
     async def discover(self) -> list[AgentCard]:
-        resp = await self.nc.request("$SRV.INFO", b"", timeout=5)
-        data = json.loads(resp.data)
-        services = data.get("services") or []
-        cards = []
-        for svc in services:
-            meta = svc.get("metadata") or {}
-            if "card" in meta:
-                cards.append(AgentCard(**meta["card"]))
+        """$SRV.PING 广播收集所有在线服务，再逐个拉取 AgentCard。"""
+        inbox = f"_INBOX.discover.{uuid4().hex}"
+        names: set[str] = set()
+
+        async def cb(msg):
+            try:
+                data = json.loads(msg.data)
+                if data.get("name"):
+                    names.add(data["name"])
+            except Exception:
+                pass
+
+        sub = await self.nc.subscribe(inbox, cb=cb)
+        await self.nc.publish("$SRV.PING", b"", reply=inbox)
+        await asyncio.sleep(1.0)
+        await sub.unsubscribe()
+
+        cards: list[AgentCard] = []
+        for name in sorted(names):
+            try:
+                cards.append(await self.get_card(name))
+            except Exception:
+                continue
         return cards
 
     async def get_card(self, agent: str) -> AgentCard:
