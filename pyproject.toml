@@ -1,0 +1,29 @@
+[project]
+name = "a2amesh"
+version = "0.1.0"
+description = "Symmetric A2A agent mesh over NATS"
+requires-python = ">=3.11"
+dependencies = [
+    "nats-py>=2.6.0",
+    "pydantic>=2.6.0",
+    "jsonschema>=4.21.0",
+    "a2a-sdk>=0.1.0",
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.29.0",
+    "aiofiles>=23.0.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.scripts]
+a2amesh = "a2amesh.cli:main"
+mesh = "a2amesh.runtime.cli_mesh:main"
+
+[project.optional-dependencies]
+test = ["pytest", "pytest-asyncio"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]

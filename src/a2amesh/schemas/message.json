@@ -1,0 +1,10 @@
+{
+  "$id": "https://a2amesh.dev/schemas/message.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["role", "parts"],
+  "properties": {
+    "role": { "enum": ["user", "agent"] },
+    "parts": { "type": "array", "items": { "$ref": "part.json" } }
+  }
+}

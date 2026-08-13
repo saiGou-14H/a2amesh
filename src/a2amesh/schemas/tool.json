@@ -1,0 +1,14 @@
+{
+  "$id": "https://a2amesh.dev/schemas/tool.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["name", "description", "parameters"],
+  "properties": {
+    "name": { "type": "string" },
+    "description": { "type": "string" },
+    "parameters": { "type": "object" },
+    "source": { "enum": ["builtin", "custom", "runtime", "mcp"] },
+    "risk": { "enum": ["low", "medium", "high"] },
+    "public": { "type": "boolean" }
+  }
+}

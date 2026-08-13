@@ -1,0 +1,18 @@
+{
+  "$id": "https://a2amesh.dev/schemas/task.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["id", "status"],
+  "properties": {
+    "id": { "type": "string" },
+    "status": {
+      "type": "object",
+      "required": ["state"],
+      "properties": {
+        "state": { "enum": ["submitted", "working", "input-required", "completed", "failed", "canceled"] }
+      }
+    },
+    "history": { "type": "array", "items": { "$ref": "message.json" } },
+    "artifacts": { "type": "array", "items": { "$ref": "artifact.json" } }
+  }
+}

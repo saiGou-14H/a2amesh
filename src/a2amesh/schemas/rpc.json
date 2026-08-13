@@ -1,0 +1,12 @@
+{
+  "$id": "https://a2amesh.dev/schemas/rpc.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["jsonrpc", "id", "method"],
+  "properties": {
+    "jsonrpc": { "const": "2.0" },
+    "id": { "type": "string" },
+    "method": { "enum": ["message/send", "message/stream", "tasks/get", "tasks/cancel", "tools/call"] },
+    "params": { "type": "object" }
+  }
+}

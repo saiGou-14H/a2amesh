@@ -1,0 +1,24 @@
+{
+  "$id": "https://a2amesh.dev/schemas/plan.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["task_id", "steps"],
+  "properties": {
+    "task_id": { "type": "string" },
+    "steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "target", "prompt", "status"],
+        "properties": {
+          "id": { "type": "string" },
+          "depends_on": { "type": "array", "items": { "type": "string" } },
+          "target": { "type": "string" },
+          "runtime": { "enum": ["hermes", "codex", "claude", "opencode"] },
+          "prompt": { "type": "string" },
+          "status": { "enum": ["pending", "running", "succeeded", "failed"] }
+        }
+      }
+    }
+  }
+}

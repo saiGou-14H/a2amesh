@@ -1,0 +1,32 @@
+{
+  "$id": "https://a2amesh.dev/schemas/part.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "oneOf": [
+    {
+      "type": "object",
+      "required": ["kind", "text"],
+      "properties": { "kind": { "const": "text" }, "text": { "type": "string" } }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "file"],
+      "properties": {
+        "kind": { "const": "file" },
+        "file": {
+          "type": "object",
+          "required": ["name"],
+          "properties": {
+            "name": { "type": "string" },
+            "mimeType": { "type": "string" },
+            "uri": { "type": "string" }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": ["kind", "data"],
+      "properties": { "kind": { "const": "data" }, "data": { "type": "object" } }
+    }
+  ]
+}

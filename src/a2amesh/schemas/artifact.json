@@ -1,0 +1,10 @@
+{
+  "$id": "https://a2amesh.dev/schemas/artifact.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["artifactId"],
+  "properties": {
+    "artifactId": { "type": "string" },
+    "parts": { "type": "array", "items": { "$ref": "part.json" } }
+  }
+}
