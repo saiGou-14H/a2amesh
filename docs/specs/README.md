@@ -1,16 +1,16 @@
 # A2AMesh V1 设计文档索引
 
 > 生成日期：2026-08-14
-> 文档状态：V1.3 当前权威设计基线；当前实现状态以《A2AMesh 开发实施计划》为准。
+> 文档状态：V1.4 当前权威设计基线；当前实现状态以《A2AMesh 开发实施计划》为准。
 > 参考规范：Knowledge Center 系列设计文档的版本管理、权威边界、状态机、失败矩阵和验收写法。
 
 ---
 
 # 1. 文档目的
 
-本目录是 A2AMesh V1 的正式设计入口，面向产品、架构、后端、Agent Runtime、测试、运维和 AI 代码生成器。文档将业务定位、协议对象、NATS Binding、Redis 状态、长任务、Runtime、接口、监控和实施计划拆开维护，避免单一大文档中同一规则多次定义。
+本目录是 A2AMesh V1 的正式设计入口，面向产品、架构、后端、Agent Runtime、测试、运维和 AI 代码生成器。文档将业务定位、协议对象、NATS Binding、Redis 状态、长任务、Runtime、接口、Artifact、受信配置、人工对账、监控和实施计划拆开维护，避免单一大文档中同一规则多次定义。
 
-本目录是当前唯一权威设计入口，只保留 V1.3 专项文档、索引和持续更新的实施计划。V1.0～V1.2 及旧版渲染资产移入 [`docs/archive`](../archive/README.md)，用于审计追溯但不参与当前实现合同；后续实现不得从归档文档复制已被 V1.3 修正的协议或状态规则。
+本目录是当前唯一权威设计入口，只保留 V1.4 主专项、三份 V1.0 新增专项、索引和持续更新的实施计划。已被替代的 V1.0～V1.3 主专项及旧版渲染资产移入 [`docs/archive`](../archive/README.md)，用于审计追溯但不参与当前实现合同；后续实现不得从归档文档复制已被当前设计修正的协议或状态规则。
 
 ---
 
@@ -18,19 +18,22 @@
 
 | 序号 | 文档 | 权威内容 | 推荐读者 |
 |---:|---|---|---|
-| 1 | [业务与总体架构设计 V1.3](A2AMesh_业务与总体架构设计_V1.3.md) | 交付剖面、拓扑、状态事件提交、授权、容量、恢复目标 | 全员 |
-| 2 | [Agent Card 与协议对象规范 V1.3](A2AMesh_AgentCard与协议对象规范_V1.3.md) | A2A 对象、Card publisher、Credential、Binding 发布边界 | 协议、后端、测试 |
-| 3 | [A2A 协议与 NATS 集成适配设计 V1.3](A2AMesh_A2A协议与NATS集成适配设计_V1.3.md) | Subject、AuthContext、Event Relay、投递与版本兼容 | 架构、后端、运维 |
-| 4 | [Redis 状态平面与数据设计 V1.3](A2AMesh_Redis状态平面与数据设计_V1.3.md) | outbox、effect ledger、grant、admission、原子函数与恢复 | 后端、DBA、测试 |
-| 5 | [任务生命周期与长任务运行时设计 V1.3](A2AMesh_任务生命周期与长任务运行时设计_V1.3.md) | Task、Supervisor、副作用、取消/对账、SSE/Push、恢复 | Runtime、前端、测试 |
-| 6 | [编排器、Runtime 与工具适配设计 V1.3](A2AMesh_编排器_Runtime与工具适配设计_V1.3.md) | Capability、SideEffectAdapter、公平准入、Runtime/Tool/MCP | Agent、后端、测试 |
-| 7 | [接口请求与响应标准 V1.3](A2AMesh_接口请求与响应标准_V1.3.md) | 身份/授权、tenant、过载、JSON-RPC/gRPC/MCP、错误码 | 联调、SDK、测试 |
-| 8 | [统计、审计与运行监控规则 V1.3](A2AMesh_统计审计与运行监控规则_V1.3.md) | outbox/effect/admission 指标、日志、Trace、告警、RTO/RPO | 运维、测试、架构 |
-| 9 | [开发实施计划](A2AMesh_开发实施计划.md) | 当前状态、阶段、文件、任务、门禁、风险和上线 | 项目全员 |
+| 1 | [业务与总体架构设计 V1.4](A2AMesh_业务与总体架构设计_V1.4.md) | 交付剖面、拓扑、状态事件提交、授权、容量、恢复目标 | 全员 |
+| 2 | [Agent Card 与协议对象规范 V1.4](A2AMesh_AgentCard与协议对象规范_V1.4.md) | A2A 对象、Card publisher、Credential、Binding 发布边界 | 协议、后端、测试 |
+| 3 | [A2A 协议与 NATS 集成适配设计 V1.4](A2AMesh_A2A协议与NATS集成适配设计_V1.4.md) | Subject、AuthContext、Event Relay、投递与版本兼容 | 架构、后端、运维 |
+| 4 | [Redis 状态平面与数据设计 V1.4](A2AMesh_Redis状态平面与数据设计_V1.4.md) | outbox、effect ledger、grant、admission、原子函数与恢复 | 后端、DBA、测试 |
+| 5 | [任务生命周期与长任务运行时设计 V1.4](A2AMesh_任务生命周期与长任务运行时设计_V1.4.md) | Task、Supervisor、副作用、取消/对账、SSE/Push、恢复 | Runtime、前端、测试 |
+| 6 | [编排器、Runtime 与工具适配设计 V1.4](A2AMesh_编排器_Runtime与工具适配设计_V1.4.md) | Capability、SideEffectAdapter、公平准入、Runtime/Tool/MCP | Agent、后端、测试 |
+| 7 | [接口请求与响应标准 V1.4](A2AMesh_接口请求与响应标准_V1.4.md) | 身份/授权、tenant、过载、JSON-RPC/gRPC/MCP、错误码 | 联调、SDK、测试 |
+| 8 | [Artifact 与对象存储设计 V1.0](A2AMesh_Artifact与对象存储设计_V1.0.md) | blob 权威、上传完成、访问票据、完整性、删除、保留与恢复 | 后端、存储、安全、运维 |
+| 9 | [受信配置与变更治理设计 V1.0](A2AMesh_受信配置与变更治理设计_V1.0.md) | 签名 bundle、generation、激活/回滚/撤销、READY、publisher ownership | 架构、安全、后端、运维 |
+| 10 | [人工对账与运维操作设计 V1.0](A2AMesh_人工对账与运维操作设计_V1.0.md) | case、evidence、claim lease、resolution、SLA、不可变审计 | 后端、安全、运维、测试 |
+| 11 | [统计、审计与运行监控规则 V1.4](A2AMesh_统计审计与运行监控规则_V1.4.md) | outbox/effect/admission/Artifact/config/reconciliation 指标、日志、告警、RTO/RPO | 运维、测试、架构 |
+| 12 | [开发实施计划](A2AMesh_开发实施计划.md) | 当前状态、阶段、文件、任务、门禁、风险和上线 | 项目全员 |
 
-推荐顺序：`1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9`。实施人员先阅读 1、9，再按任务读取对应专项。
+推荐顺序：`1 → 2 → 3 → 4 → 5 → 6 → 7 → 8/9/10 → 11 → 12`。实施人员先阅读 1、12，再按任务读取对应专项。
 
-V1.0～V1.2 作为不可变历史版本归档，不再是当前实现依据。V1.3 在 V1.2 基础上闭合累积交付剖面、Redis/JetStream 提交、外部副作用不确定态、最小能力授权、有界公平准入、取消对账、RTO/RPO、N/N-1 兼容和 Card publisher 归属。
+已被替代的 V1.0～V1.3 主专项作为不可变历史归档，不再是当前实现依据。V1.3 闭合累积交付剖面、Redis/JetStream 提交、side-effect ledger、能力授权、准入、恢复和 Card publisher 基础；V1.4 进一步闭合 Artifact/Object Store、受信配置生命周期和人工对账运维合同。
 
 ---
 
@@ -39,13 +42,16 @@ V1.0～V1.2 作为不可变历史版本归档，不再是当前实现依据。V1
 | 规则 | 权威文档 |
 |---|---|
 | V1 交付剖面、组件职责、部署拓扑和 RTO/RPO | 总体架构 |
-| Agent Card、Task、Message、Artifact、扩展字段 | 协议对象规范 |
+| Agent Card、Task、Message、Artifact 协议字段、扩展字段 | 协议对象规范 |
 | NATS Subject、Envelope、请求/流语义 | NATS 集成适配 |
 | Redis Key、字段、Lua、TTL、索引、outbox/effect/grant/admission | Redis 数据设计 |
 | 长任务状态、heartbeat、lease、恢复 | 任务生命周期运行时 |
 | 编排、Runtime Adapter、Tool Policy | 编排与 Runtime 适配 |
 | 请求头、接口、错误、示例 | 接口标准 |
-| 指标、审计、告警、保留 | 监控规则 |
+| Artifact blob、object key、上传/完成/下载/删除、保留与恢复 | Artifact 与对象存储设计 |
+| 签名 bundle、generation、激活/回滚/撤销、READY 与 Card publisher lease | 受信配置与变更治理设计 |
+| UNKNOWN case、evidence、claim、resolution、SLA 与终态不可改写 | 人工对账与运维操作设计 |
+| 跨域指标命名、日志/Trace、告警编排、看板和观测数据保留 | 监控规则 |
 | 当前完成度、实施顺序和退出门禁 | 开发实施计划 |
 
 若专项文档与实施计划冲突：业务规则以专项文档为准，当前完成状态和排期以实施计划为准。
@@ -57,7 +63,7 @@ V1.0～V1.2 作为不可变历史版本归档，不再是当前实现依据。V1
 1. 文件名带版本号的专项文档发布后视为不可变历史版本。
 2. 内容修正需复制最新文件、递增版本号并更新版本说明；不得悄悄改写已发布版本。
 3. `A2AMesh_开发实施计划.md` 是持续更新文件，不在文件名中增加版本号；历史由 Git 追踪。
-4. 协议规范版本、SDK 版本和项目文档版本彼此独立：当前文档 V1.3 基于 A2A Specification v1.0.1，协商值为 `1.0`。
+4. 协议规范版本、SDK 版本和项目文档版本彼此独立：当前文档 V1.4 基于 A2A Specification v1.0.1，协商值为 `1.0`。
 5. 只有相应验收门禁通过后，README 才能使用“已实现”“已兼容”等表述。
 
 ---
@@ -118,7 +124,7 @@ V1.0～V1.2 作为不可变历史版本归档，不再是当前实现依据。V1
 | BR-006 断线恢复 | 任务生命周期、接口标准 | GetTask + SubscribeToTask | TEST-RECOVERY-001 客户端/Gateway/Peer 断线 |
 | BR-007 幂等执行 | Redis 数据、NATS 适配 | DATA-DEDUPE-001、claim_message | TEST-IDEMP-001 100 并发重复提交 |
 | BR-008 多 Agent 观察 | 任务生命周期、Runtime 适配 | Observer rules/policy | TEST-OBSERVER-001 防反馈环与只读默认 |
-| BR-009 可运维 | 监控规则 | OBS-ALERT-001～025 | TEST-OBS-001 指标/审计/告警/备份 |
+| BR-009 可运维 | 监控规则 | OBS-ALERT-001～030 | TEST-OBS-001 指标/审计/告警/备份 |
 | BR-010 可演进 | 全部专项 | 版本化 URI/Key/Envelope | TEST-VERSION-001 升级与旧协议隔离 |
 | BR-011 gRPC 互操作 | 总体架构、接口标准 | 官方 `A2AService` 11 RPC | TEST-GRPC-001 |
 | BR-012 MCP 互操作 | Runtime/MCP、接口标准 | MCP 2026-07-28 tools/resources + Task handle | TEST-MCP-001 |
@@ -126,6 +132,9 @@ V1.0～V1.2 作为不可变历史版本归档，不再是当前实现依据。V1
 | BR-014 MCP 幂等提交 | Runtime/MCP、Redis、接口 | required messageId + canonical hash | TEST-MCP-IDEMP-001 |
 | BR-015 OAuth 部署闭环 | Runtime/MCP、监控、实施计划 | RFC9728/RFC8414、client_credentials、JWKS | TEST-OAUTH-001 |
 | BR-016 无租户互操作 | 对象、接口、Core、Redis | tenant empty/reject-before-side-effect | TEST-TENANT-001 |
+| BR-017 大型 Artifact 闭环 | Artifact、对象、Redis、接口 | upload/finalize/download/delete + Task 原子附加 | TEST-ARTIFACT-001 |
+| BR-018 受信配置变更 | 配置、总体、Redis、Card | signed bundle + generation CAS + READY + publisher fencing | TEST-CONFIG-ATOMIC-001 |
+| BR-019 UNKNOWN 可运营 | 人工对账、任务、Redis、接口 | case/evidence/claim/resolution + terminal immutable | TEST-RECON-RESOLVE-001 |
 
 ## 8.2 非功能需求
 
@@ -145,12 +154,15 @@ V1.0～V1.2 作为不可变历史版本归档，不再是当前实现依据。V1
 | NFR-012 数据恢复点 | 受控服务重启且持久卷完好 RPO 0；整机/磁盘/电源故障不超过 15 分钟 | TEST-DR-001 |
 | NFR-013 有界准入 | 全局/Principal 队列、deadline、大小和公平性 | TEST-ADMISSION-001 |
 | NFR-014 最小能力授权 | Principal/Agent/operation/skill/tool/workspace 全维匹配 | TEST-AUTHZ-001 |
+| NFR-015 Artifact 完整性 | Object Store blob 权威、SHA-256/size 校验、signed URL 不持久化 | TEST-ARTIFACT-INTEGRITY-001 |
+| NFR-016 配置原子一致 | 签名、单 active generation、组件 READY、回滚递增 | TEST-CONFIG-ATOMIC-001 |
+| NFR-017 对账可审计 | claim fencing、证据约束、原子 resolution、Task 终态不可改写 | TEST-RECON-IMMUTABLE-001 |
 
 ---
 
 # 9. 文档集验收
 
-- 九份当前权威文档均存在且链接可达，V1.0～V1.2 历史文档位于 archive 且不参与当前契约；
+- 11 份版本化活动文档、索引和实施计划均存在且链接可达；已被替代的 V1.0～V1.3 主专项位于 archive 且不参与当前契约；
 - 主章节、版本记录和权威边界完整；
 - A2A 版本、方法、状态和 Agent Card 字段一致；
 - NATS Subject、Redis Key、Progress Extension 在各文档中一致；

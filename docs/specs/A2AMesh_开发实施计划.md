@@ -20,7 +20,7 @@
 - 本文件持续更新，不在文件名中增加版本号；
 - 阶段完成状态必须有测试/实机证据，不能仅凭代码存在勾选；
 - 历史通过 Git 追踪；
-- 带版本号的八份专项文档发布后不可原地改写，修订需递增版本；
+- 带版本号的十一份专项文档发布后不可原地改写，修订需递增版本；
 - 任何 README 兼容声明必须引用本文件的门禁结果；
 - V1/V2 表示交付范围，不是本文档版本。
 
@@ -28,15 +28,18 @@
 
 | 序号 | 文档 | 主要约束 |
 |---:|---|---|
-| 1 | 业务与总体架构设计 V1.3 | 交付剖面、状态事件提交、授权、容量、恢复与兼容 |
-| 2 | Agent Card 与协议对象规范 V1.3 | 官方对象、Card publisher、Credential、剖面化 Binding 发布 |
-| 3 | A2A 协议与 NATS 集成适配设计 V1.3 | Subject、AuthContext、Event Relay、N/N-1 兼容 |
-| 4 | Redis 状态平面与数据设计 V1.3 | outbox、effect ledger、grant、admission、Lua、lease、幂等 |
-| 5 | 任务生命周期与长任务运行时设计 V1.3 | Task ownership、Supervisor、副作用、取消对账、恢复 |
-| 6 | 编排器、Runtime 与工具适配设计 V1.3 | Capability、SideEffectAdapter、公平准入、Runtime/Tool/MCP |
-| 7 | 接口请求与响应标准 V1.3 | 身份授权、tenant、429/503、JSON-RPC/gRPC/MCP |
-| 8 | 统计、审计与运行监控规则 V1.3 | outbox/effect/admission、日志、告警、RTO/RPO |
-| 9 | 本实施计划 | 当前状态、顺序、交付和门禁 |
+| 1 | 业务与总体架构设计 V1.4 | 交付剖面、状态事件提交、授权、容量、恢复与兼容 |
+| 2 | Agent Card 与协议对象规范 V1.4 | 官方对象、Card publisher、Credential、剖面化 Binding 发布 |
+| 3 | A2A 协议与 NATS 集成适配设计 V1.4 | Subject、AuthContext、Event Relay、N/N-1 兼容 |
+| 4 | Redis 状态平面与数据设计 V1.4 | outbox、effect ledger、grant、admission、Lua、lease、幂等 |
+| 5 | 任务生命周期与长任务运行时设计 V1.4 | Task ownership、Supervisor、副作用、取消对账、恢复 |
+| 6 | 编排器、Runtime 与工具适配设计 V1.4 | Capability、SideEffectAdapter、公平准入、Runtime/Tool/MCP |
+| 7 | 接口请求与响应标准 V1.4 | 身份授权、tenant、429/503、JSON-RPC/gRPC/MCP |
+| 8 | Artifact 与对象存储设计 V1.0 | blob、上传完成、完整性、访问票据、删除、保留与恢复 |
+| 9 | 受信配置与变更治理设计 V1.0 | signed bundle、generation、READY、激活/回滚/撤销、publisher ownership |
+| 10 | 人工对账与运维操作设计 V1.0 | case、evidence、claim、resolution、SLA、终态不可改写 |
+| 11 | 统计、审计与运行监控规则 V1.4 | outbox/effect/admission/Artifact/config/reconciliation、日志、告警、RTO/RPO |
+| 12 | 本实施计划 | 当前状态、顺序、交付和门禁 |
 
 ## 1.3 不作为实施依据
 
@@ -73,6 +76,9 @@
 | Redis outbox/Event Relay | 缺失 | — | C2/C3 实现 |
 | Side-effect ledger/Adapter | 缺失 | — | C2/C4 实现 |
 | Capability grant/admission | 缺失 | — | C2/C4/C5 实现 |
+| Artifact Broker/Object Store | 缺失 | — | C2/C4/C5/C7 实现并恢复验收 |
+| Signed Config Controller/lifecycle | 缺失 | — | C2/C5/C7 实现，单 active generation |
+| Reconciliation Service/ops CLI | 缺失 | — | C2/C4/C5/C7 实现，provider 证据门禁 |
 | NATS v1 Binding | 缺失 | — | C3 实现 |
 | TaskSupervisor/Progress | 缺失 | — | C4 实现 |
 | A2A JSON-RPC/SSE Gateway | 缺失 | — | C5 实现 |
@@ -107,6 +113,9 @@
 8. Linux + 至少一个 NAT 后 Peer 双向调用。
 9. NKey/Bearer 统一 Canonical Principal、可信 AuthContext、不可改指 alias 和最小 capability。
 10. 官方 tenant 字段只接受空值，非空在任何 Task/队列/副作用前拒绝。
+11. 私有 Object Store、Artifact upload/finalize/download/delete、完整性、孤儿清理和一致恢复；未启用时仅允许 inline 上限。
+12. 签名配置 bundle、validate/stage/activate、单 active generation、回滚/撤销、组件 READY 和 Card publisher lease/fencing。
+13. UNKNOWN reconciliation case、evidence、claim lease、APPLIED/FAILED/COMPENSATED resolution、SLA 和终态 Task 不可改写。
 
 ## 3.2 INTEROP
 
@@ -138,6 +147,7 @@
 | Runtime | 至少 1 个固定版本 | 额外 Adapter | 不新增强制 Runtime |
 | 真机 | Linux + 1 NAT Peer | Linux + 2 Windows | 在 INTEROP 拓扑上增加 MCP/OAuth/Observer |
 | 声明 | 只声明已通过 JSON-RPC interface | 才可追加 gRPC/Push | MCP 单独发现，不写入 A2A supportedInterfaces |
+| 运维闭环 | signed config + Artifact policy + UNKNOWN case 必须通过 | 复用 CORE | 复用 CORE |
 
 ---
 
@@ -173,7 +183,10 @@ src/a2amesh/
 │       ├── resolve_principal.lua
 │       ├── side_effect.lua
 │       ├── authorize_capability.lua
-│       └── admission.lua
+│       ├── admission.lua
+│       ├── artifact.lua
+│       ├── config_generation.lua
+│       └── reconciliation.lua
 ├── identity/
 │   ├── principal.py
 │   ├── credentials.py
@@ -188,6 +201,24 @@ src/a2amesh/
 │   ├── grpc_server.py
 │   ├── mcp_server.py
 │   └── push_dispatcher.py
+├── artifact/
+│   ├── service.py
+│   ├── object_store.py
+│   ├── signing.py
+│   ├── integrity.py
+│   └── reaper.py
+├── config/
+│   ├── controller.py
+│   ├── bundle.py
+│   ├── verifier.py
+│   ├── readiness.py
+│   └── publisher_lease.py
+├── reconciliation/
+│   ├── service.py
+│   ├── evidence.py
+│   ├── claims.py
+│   ├── providers.py
+│   └── cli.py
 ├── runtime/
 │   ├── agent.py
 │   ├── supervisor.py
@@ -264,6 +295,8 @@ mcp = [
 8. 每阶段提交粒度小、可回滚；文档/Schema/测试同提交。
 9. callerPrincipal 只由可信入口注入；任何业务 payload 自报身份必须失败。
 10. tenant 验证、Principal resolve、幂等 claim 的顺序不可调整。
+11. Credential/Alias/Grant/Card/Profile/Artifact/Runtime/Tool policy 必须来自同一 active signed generation，不能分散读未签名配置。
+12. 大型 Artifact finalize、UNKNOWN resolution 和配置激活都必须经 State 原子 mutation + outbox，外部组件不得直接声明权威事实。
 
 ---
 
@@ -360,7 +393,7 @@ tests/unit/protocol/
 
 ## 9.1 目标
 
-替换单进程 Task/Card 状态，建立 Principal/Credential/Alias、共享幂等、lease、outbox、side-effect ledger、capability grant、admission、List 和恢复基础。
+替换单进程 Task/Card 状态，建立 Principal/Credential/Alias、共享幂等、lease、outbox、side-effect ledger、capability grant、admission、Artifact metadata、signed config generation、reconciliation case、List 和恢复基础。
 
 ## 9.2 文件
 
@@ -384,6 +417,9 @@ tests/unit/protocol/
 14. effect ledger 状态机、provider reference/hash、UNKNOWN reconciliation。
 15. capability grant generation/expiry 和全维 fail-closed 匹配。
 16. 全局/Principal admission counter、公平队列、queue deadline 和大小上限。
+17. Artifact upload/metadata/delete due Key、`create_upload/finalize_artifact/request_artifact_delete` 原子函数。
+18. 不可变 config bundle、component READY、active pointer、publisher lease/fencing 和 generation 原子替换。
+19. UNKNOWN effect 原子创建唯一 case；case/evidence/claim 索引、revision/fencing 和 `resolve_reconciliation_case`。
 
 ## 9.4 测试
 
@@ -400,12 +436,15 @@ Task mutation 中途失败 → Task/索引/outbox 全回滚
 effect timeout/断线 → UNKNOWN，禁止自动重试/取消成功
 grant 任一维度不匹配 → claim/queue 前拒绝
 Principal/global queue → 有界、公平、计数可回收
+Artifact finalize 中途失败 → blob/metadata/Task/outbox 不出现悬空成功
+config activate 并发/READY 超时 → 单 active generation 或完整回滚
+UNKNOWN 重复回调/并发 claim → 单 case、单 claimant、旧 fencing 拒绝
 公网/Windows → 6379 不可达
 ```
 
 ## 9.5 退出门禁
 
-所有状态 API 只经 State Service；新任务不再写进程 `_tasks` 权威字典；Task mutation 与 outbox 原子，UNKNOWN effect、授权失败、准入失败和 State 故障全部 fail closed。
+所有状态 API 只经 State Service；新任务不再写进程 `_tasks` 权威字典；Task/Artifact/config/reconciliation mutation 与 outbox 原子，UNKNOWN effect、授权失败、准入失败、generation 漂移和 State 故障全部 fail closed。
 
 ---
 
@@ -457,7 +496,7 @@ nats/config/*.conf
 
 ## 11.1 目标
 
-让静默长任务可观察、可取消、可恢复，完成 Progress、SideEffectAdapter、公平准入和派生 Projector。
+让静默长任务可观察、可取消、可恢复，完成 Progress、SideEffectAdapter、ArtifactClient、公平准入、UNKNOWN case 创建和派生 Projector。
 
 ## 11.2 文件
 
@@ -467,6 +506,8 @@ runtime/progress.py
 runtime/workspace.py
 state/projector.py
 state/event_relay.py
+artifact/client.py
+reconciliation/providers.py
 observer/rules.py
 tests/unit/runtime/test_supervisor.py
 tests/integration/test_long_task_*.py
@@ -486,6 +527,8 @@ tests/integration/test_long_task_*.py
 10. 有界公平 admission、queue deadline、请求/Artifact/context 大小。
 11. SideEffectAdapter、ledger、UNKNOWN reconcile/compensate。
 12. Observer deterministic rules（EXTENDED 前暂不调用 LLM）。
+13. 大型 Runtime 输出使用 upload/finalize；未 AVAILABLE 不得成功终态或写本地路径 URI。
+14. UNKNOWN 原子创建 case；Runtime/Adapter 只能采集证据，不能用业务 Credential 自行 resolve。
 
 ## 11.4 门禁
 
@@ -494,6 +537,8 @@ tests/integration/test_long_task_*.py
 - lease lost 后不再副作用；
 - unsafe 崩溃不自动重跑；
 - UNKNOWN effect 未对账前不重试，取消返回 FAILED + reconciliation_required；
+- case 可 claim/evidence/resolve，且事后 resolution 不改写已失败 Task 标准终态；
+- 大型 Artifact 完整性验证后才附加 Task；Object Store 故障不产生虚假成功结果；
 - Principal/全局队列有界且公平，429 与 503 语义区分；
 - 多订阅者事件顺序一致；
 - 目标 CORE Runtime 在其支持平台能杀完整子进程树；其他 Adapter/平台进入 INTEROP 独立门禁。
@@ -536,10 +581,14 @@ tests/conformance/test_official_client_*.py
 15. Bearer 解析为 Canonical Principal，跨 Binding ownership/Get/List/Cancel 套件通过。
 16. capability、请求大小、Principal/global admission 在排队前执行；429/503 映射通过。
 17. CORE 最低 Metrics/Audit/Health/Alerts 和 outbox/effect/admission Runbook。
+18. Artifact upload/completion/download-ticket/delete API 的 ownership、幂等、409/413/423/503 和 signed URL 脱敏。
+19. Config ops API/CLI 的 validate/stage/activate/rollback/revoke、独立 Credential、generation CAS 和启动 fail closed。
+20. Reconciliation ops API/CLI 的 list/show/claim/evidence/resolve/reopen、revision/fencing/idempotency 和 SLA。
+21. Card publisher 候选从 active bundle 读取，Redis lease/fencing 决定唯一 publisher；Profile 只在组件 READY 与兼容门禁通过后广告。
 
 ## 12.4 退出门禁
 
-官方 JSON-RPC client 可执行 11 个操作，Card 只声明已通过的 JSON-RPC interface。C0～C5 门禁和至少 Linux + 1 NAT Peer 真机通过后，才可声明 `CORE / A2A v1 JSON-RPC compatible`；不得提前声明 gRPC、Push、MCP 或 Observer。
+官方 JSON-RPC client 可执行 11 个操作，Card 只声明已通过的 JSON-RPC interface。signed config、Artifact policy/Object Store（启用大对象时）、UNKNOWN reconciliation 和 ops 权限门禁属于 CORE，不能以后续“运维补齐”跳过。C0～C5 门禁和至少 Linux + 1 NAT Peer 真机通过后，才可声明 `CORE / A2A v1 JSON-RPC compatible`；不得提前声明 gRPC、Push、MCP 或 Observer。
 
 ---
 
@@ -594,7 +643,10 @@ tests/conformance/test_official_client_*.py
 - Redis loopback/ACL/AOF/noeviction；
 - Gateway HTTPS；HTTP/2/gRPC 与 MCP Streamable HTTP 仅在部署目标包含对应剖面时启用；
 - State/Gateway/Peer systemd 或容器；
-- 日志轮转、磁盘告警、Redis/JetStream 异机加密备份（恢复点间隔不超过 15 分钟）；
+- Config Controller、签名 bundle 只读制品、信任根和受保护本地 cache；
+- 私有 Object Store/Artifact Broker、服务端加密、生命周期、inventory 和 Reaper；
+- Reconciliation Service/ops API 仅绑定受控管理网络；
+- 日志轮转、磁盘告警、Redis/JetStream/Object Store/config/audit 异机加密一致备份（恢复点间隔不超过 15 分钟）；
 - firewall 只开放 HTTPS 和 NATS TLS/WSS；
 - secret 文件最小权限。
 - 配置外部 OAuth AS issuer/resource/JWKS，验证 metadata 与 key rotation；AS 可同机独立容器或外部托管，但不是 A2AMesh 内嵌签发器。
@@ -616,6 +668,9 @@ tests/conformance/test_official_client_*.py
 - Redis/NATS 管理端口公网不可达；
 - ACL 含 JetStream 实测；
 - 备份恢复演练；
+- signed bundle 激活/回滚/撤销、过期启动和 publisher split-brain 演练；
+- Object Store 禁用/不可用/对象缺失/hash 损坏/orphan/Reaper 演练；
+- reconciliation 5 分钟 P1、15 分钟未 claim 升级、10 分钟 claim lease 和 provider outage 演练；
 - 服务重启 15 分钟、整机恢复 4 小时和整机丢失 RPO 15 分钟门禁；
 - P1 告警可送达；
 - 单 Linux SPOF 在运行手册明确。
@@ -645,6 +700,9 @@ tests/conformance/test_official_client_*.py
 - 模拟 Push 500/timeout/重复；
 - 让 Projector lag，验证 Get/List 权威快照不受影响；
 - 模拟 provider 已执行但响应丢失，验证 effect UNKNOWN 与 reconciliation；
+- 模拟两个操作员并发 claim/旧 fencing 晚到、证据冲突和 resolution 后 reopen；
+- 模拟 Artifact 上传中断、hash/size 不符、finalize/State 故障、对象缺失、删除重试和 Redis/Object Store 一致恢复；
+- 模拟 config 签名错误、generation CAS 冲突、组件 NACK/READY 过期、bundle expiry、回滚撤销和 Card publisher 网络分区；
 - 压满 Principal/global 队列，验证公平性、429/503 和计数回收；
 - 磁盘接近水位；
 - 重复 messageId 并发提交。
@@ -655,10 +713,11 @@ tests/conformance/test_official_client_*.py
 1. 目标交付剖面的全部自动化测试通过，无未知 skip。
 2. 目标剖面的官方 SDK/stub/MCP 报告归档。
 3. CORE 至少 Linux + 1 NAT Peer；INTEROP/EXTENDED 使用 Linux + 2 Windows 目标矩阵。
-4. 故障恢复无重复副作用，UNKNOWN effect 有可执行对账路径。
+4. 故障恢复无重复副作用，UNKNOWN effect 有可认领、可收证、可裁决、可审计的对账路径，且不改写失败 Task 终态。
 5. 指标/告警/Runbook/备份和 RTO/RPO 演练通过。
-6. 文档/代码/配置一致。
-7. 兼容声明由评审批准。
+6. Artifact blob/metadata、active config generation 和 reconciliation case/effect/Task 可跨存储对账。
+7. 文档/代码/配置一致。
+8. 兼容声明由评审批准。
 
 ---
 
@@ -749,32 +808,25 @@ Linux + 2 Windows，真实 Runtime 可用性按环境标记；发布环境不得
 
 # 18. 配置与 Secret
 
-建议主配置：
+本地主机文件只允许保存启动引导信息，不是业务配置权威：
 
 ```yaml
 mesh:
   id: default
-  agent_id: windows-a
+bootstrap:
+  config_controller: "https://config.internal.example"
+  trust_root_file: "${A2AMESH_CONFIG_TRUST_ROOT_FILE}"
+  cache_file: "${A2AMESH_CONFIG_CACHE_FILE}"
 nats:
   servers: ["tls://mesh.example.com:4222"]
   credentials_file: "${A2AMESH_NATS_CREDS_FILE}"
 state:
   request_timeout_seconds: 5
-execution:
-  max_concurrent_tasks: 4
-  task_heartbeat_seconds: 5
-  lease_ttl_seconds: 30
-  lease_renew_seconds: 10
-workspaces:
-  repo:a2amesh:
-    path: "C:\\work\\a2amesh"
-    mode: read-write
-runtimes:
-  hermes:
-    executable: hermes
+secrets:
+  provider: "os-secret-store"
 ```
 
-Redis URL、Bearer、Webhook encryption key、NKey seed 不进入 YAML/Git。
+Credential/Alias/Grant、Card publisher、delivery profile、Artifact policy、Runtime/Tool/workspace policy、容量和超时全部进入 RFC 8785 canonical JSON + JWS 的签名 bundle，经 `VALIDATED → STAGED → ACTIVE` 激活。Redis URL、Bearer、Webhook encryption key、NKey seed、对象存储密钥和签名私钥不进入 bundle/YAML/Git，只使用 `secretRef` 指向 OS Secret Store/受保护文件。组件启动必须验证签名、meshId、active generation、expiry 和撤销状态，不能从未签名 YAML fail open。
 
 ---
 
@@ -798,11 +850,14 @@ Redis URL、Bearer、Webhook encryption key、NKey seed 不进入 YAML/Git。
 ## 20.1 上线
 
 ```text
-备份 Redis/NATS 配置和数据
+备份 Redis/NATS/Object Store/config bundle/audit 和信任根元数据
 → 部署 State/Redis scripts
 → 部署 NATS stream/ACL
+→ 部署 Config Controller，validate/stage 新 bundle，不激活
+→ 部署 Artifact/Reconciliation 服务并报告 READY
 → 部署 Peer（不接生产流量）
 → 部署 Gateway canary
+→ 激活签名 generation，核对组件 READY 和唯一 Card publisher
 → 官方黑盒
 → 一台 Windows canary
 → 三机全量
@@ -817,6 +872,8 @@ Redis URL、Bearer、Webhook encryption key、NKey seed 不进入 YAML/Git。
 - 正在执行 Task 优先完成/取消，不迁移 owner；
 - 发生幂等/lease 不确定时停止新提交而不是冒险回滚执行状态。
 - outbox、effect ledger 和 reconciliation 记录不得因应用回滚删除；存在 UNKNOWN 时禁止自动重放。
+- 配置回滚必须发布更高 generation 指向旧内容，不能降低 active pointer 或手改 Redis；回滚前重新验证 secretRef、组件 READY 和 profile 门禁。
+- Object Store 对象、Artifact metadata 和删除 tombstone 不随应用版本回滚；先停止新上传，再执行 inventory/一致性核对。
 
 ---
 
@@ -829,6 +886,9 @@ Redis URL、Bearer、Webhook encryption key、NKey seed 不进入 YAML/Git。
 | NATS/网络 | C3、ACL、JetStream、Relay PubAck、N/N-1、NAT 真机 |
 | Runtime | C4、Adapter、Supervisor、SideEffectAdapter、Windows process |
 | Gateway | C5 CORE JSON-RPC/SSE/Auth/Admission；C6 gRPC |
+| Artifact/存储 | C2/C4/C5/C7，Object Store、完整性、Reaper、备份恢复 |
+| 配置/安全 | C2/C5/C7，签名 bundle、generation、READY、回滚撤销、publisher fencing |
+| 对账/运维 | C2/C4/C5/C7，case/evidence/claim/resolution、provider adapter、SLA |
 | MCP/可观测/安全 | C6/C7、MCP、Push、Observer、监控、OAuth、SSRF、RTO/RPO |
 | 测试 | conformance、故障注入、三机矩阵 |
 
@@ -863,6 +923,9 @@ Redis URL、Bearer、Webhook encryption key、NKey seed 不进入 YAML/Git。
 | R-021 | 滚动升级协议漂移 | major reject、minor N/N-1、read-old/write-new、Card 延迟广告 |
 | R-022 | Card 多实例竞争 | 单 publisher ownership、generation CAS、presence 分离 |
 | R-023 | 恢复目标不可证明 | 15 分钟/4 小时 RTO、15 分钟 RPO、异机备份和定期演练 |
+| R-024 | Artifact 悬空、损坏或 signed URL 泄漏 | finalize 原子附加、SHA-256/size、短 TTL URL 不持久化、inventory/Reaper |
+| R-025 | 组件配置 generation 分裂或未签名 fail open | JWS/canonical hash、READY、单 active CAS、过期/撤销启动门禁 |
+| R-026 | UNKNOWN 人工处理不可追踪或误改 Task | 唯一 case、claim fencing、证据类型、原子 resolution、terminal immutable |
 
 ---
 
@@ -886,14 +949,14 @@ Redis URL、Bearer、Webhook encryption key、NKey seed 不进入 YAML/Git。
 
 # 24. 最终上线准入
 
-- 八份版本化专项文档及本实施计划完成评审；
+- 十一份版本化专项文档及本实施计划完成评审；
 - 目标交付剖面的 BR/NFR 有对应实现和 TEST；
 - CORE 必须通过官方 JSON-RPC SDK；INTEROP 才要求 gRPC stub；EXTENDED 才要求 MCP 2026-07-28 client；
 - 每个实际发布的 Card interface 通过同一语义套件，未交付 Binding 不得广告；
-- Redis/NATS/Peer/Gateway/Runtime 故障注入通过；
+- Redis/NATS/Object Store/Config/Peer/Gateway/Runtime/Reconciliation 故障注入通过；
 - 长任务心跳、断线、取消、恢复通过；
-- CORE 必须通过 Tool/capability/admission/effect 安全门禁；Push 属于 INTEROP，MCP/OAuth/Observer 属于 EXTENDED；
-- CORE 必须通过 TEST-IDENTITY-001、TEST-TENANT-001、TEST-OUTBOX-001、TEST-EFFECT-001、TEST-AUTHZ-001、TEST-ADMISSION-001、TEST-DR-001；MCP/OAuth 测试仅在 EXTENDED 强制；
+- CORE 必须通过 Tool/capability/admission/effect、signed config、Artifact 和 reconciliation 安全门禁；Push 属于 INTEROP，MCP/OAuth/Observer 属于 EXTENDED；
+- CORE 必须通过 TEST-IDENTITY-001、TEST-TENANT-001、TEST-OUTBOX-001、TEST-EFFECT-001、TEST-AUTHZ-001、TEST-ADMISSION-001、TEST-ARTIFACT-001、TEST-CONFIG-ATOMIC-001、TEST-RECON-RESOLVE-001、TEST-RECON-IMMUTABLE-001、TEST-DR-001；MCP/OAuth 测试仅在 EXTENDED 强制；
 - CORE 至少 Linux + 1 NAT Peer 双向调用；INTEROP/EXTENDED 才要求 Linux + 2 Windows 任意方向；
 - 监控、审计、告警、备份、Runbook 完整；
 - 无高危未决缺陷；
