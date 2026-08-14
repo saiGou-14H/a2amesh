@@ -1,7 +1,7 @@
 # A2AMesh V1 设计文档索引
 
 > 生成日期：2026-08-14
-> 文档状态：V1.1 当前权威设计基线；当前实现状态以《A2AMesh 开发实施计划》为准。
+> 文档状态：V1.2 当前权威设计基线；当前实现状态以《A2AMesh 开发实施计划》为准。
 > 参考规范：Knowledge Center 系列设计文档的版本管理、权威边界、状态机、失败矩阵和验收写法。
 
 ---
@@ -12,7 +12,7 @@
 
 本目录是当前唯一权威设计入口。已被替代的综合设计不再保留在工作树中，历史版本通过 Git 追溯；后续实现不得从旧提交复制已被本套专项修正的协议或状态规则。
 
-![A2AMesh V1.1 总体架构](../assets/A2AMesh_V1.1_Architecture.png)
+![A2AMesh V1.2 总体架构](../assets/A2AMesh_V1.2_Architecture.png)
 
 ---
 
@@ -20,19 +20,19 @@
 
 | 序号 | 文档 | 权威内容 | 推荐读者 |
 |---:|---|---|---|
-| 1 | [业务与总体架构设计 V1.1](A2AMesh_业务与总体架构设计_V1.1.md) | 产品定位、对称性、JSON-RPC/gRPC、MCP、虚拟路由、拓扑 | 全员 |
-| 2 | [Agent Card 与协议对象规范 V1.1](A2AMesh_AgentCard与协议对象规范_V1.1.md) | A2A 对象、JSON-RPC/gRPC interfaces、Bearer、MCP 边界 | 协议、后端、测试 |
-| 3 | [A2A 协议与 NATS 集成适配设计 V1.1](A2AMesh_A2A协议与NATS集成适配设计_V1.1.md) | JSON-RPC/gRPC/NATS 边界、Subject、Registry RPC、投递语义 | 架构、后端、运维 |
-| 4 | [Redis 状态平面与数据设计 V1.1](A2AMesh_Redis状态平面与数据设计_V1.1.md) | DATA ID、Key、Agent 查询、Lua、租约、幂等和恢复 | 后端、DBA、测试 |
-| 5 | [任务生命周期与长任务运行时设计 V1.1](A2AMesh_任务生命周期与长任务运行时设计_V1.1.md) | EVT ID、Task 状态机、Supervisor、SSE、Push、恢复 | Runtime、前端、测试 |
-| 6 | [编排器、Runtime 与工具适配设计 V1.1](A2AMesh_编排器_Runtime与工具适配设计_V1.1.md) | Runtime、Tool、MCP 2026-07-28 Client/Server Bridge | Agent、后端、测试 |
-| 7 | [接口请求与响应标准 V1.1](A2AMesh_接口请求与响应标准_V1.1.md) | JSON-RPC/SSE、gRPC、MCP、错误码、Bearer/OAuth | 联调、SDK、测试 |
-| 8 | [统计、审计与运行监控规则 V1.1](A2AMesh_统计审计与运行监控规则_V1.1.md) | Registry/Gateway、gRPC/MCP、日志、Trace、告警 | 运维、测试、架构 |
+| 1 | [业务与总体架构设计 V1.2](A2AMesh_业务与总体架构设计_V1.2.md) | 产品定位、Canonical Principal、MCP幂等、OAuth、tenant、拓扑 | 全员 |
+| 2 | [Agent Card 与协议对象规范 V1.2](A2AMesh_AgentCard与协议对象规范_V1.2.md) | A2A 对象、Credential、tenant 空值、Binding 发布边界 | 协议、后端、测试 |
+| 3 | [A2A 协议与 NATS 集成适配设计 V1.2](A2AMesh_A2A协议与NATS集成适配设计_V1.2.md) | AuthContext/NKey签名、Subject、Registry RPC、11操作 | 架构、后端、运维 |
+| 4 | [Redis 状态平面与数据设计 V1.2](A2AMesh_Redis状态平面与数据设计_V1.2.md) | DATA、Principal/Credential/Alias、Lua、幂等、恢复 | 后端、DBA、测试 |
+| 5 | [任务生命周期与长任务运行时设计 V1.2](A2AMesh_任务生命周期与长任务运行时设计_V1.2.md) | Task ownership、状态机、Supervisor、SSE、Push、恢复 | Runtime、前端、测试 |
+| 6 | [编排器、Runtime 与工具适配设计 V1.2](A2AMesh_编排器_Runtime与工具适配设计_V1.2.md) | MCP messageId、OAuth AS、Runtime、Tool、Workspace | Agent、后端、测试 |
+| 7 | [接口请求与响应标准 V1.2](A2AMesh_接口请求与响应标准_V1.2.md) | 身份归一、tenant、JSON-RPC/gRPC/MCP、错误码 | 联调、SDK、测试 |
+| 8 | [统计、审计与运行监控规则 V1.2](A2AMesh_统计审计与运行监控规则_V1.2.md) | Identity/OAuth/MCP幂等、日志、Trace、告警 | 运维、测试、架构 |
 | 9 | [开发实施计划](A2AMesh_开发实施计划.md) | 当前状态、阶段、文件、任务、门禁、风险和上线 | 项目全员 |
 
 推荐顺序：`1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9`。实施人员先阅读 1、9，再按任务读取对应专项。
 
-V1.0 文件作为已发布历史版本保留，不再是当前实现依据。V1.1 闭合了每 Agent 公共路由、Gateway 非主节点、State Agent/Card RPC、JSON-RPC/gRPC 双 Binding、MCP Client/Server Bridge、Bearer/OAuth、`A2A-Extensions`、官方错误映射和 DATA/EVT/TEST 追踪。
+V1.0、V1.1 文件作为已发布历史版本保留，不再是当前实现依据。V1.2 在 V1.1 基础上闭合 Canonical Principal、可信 AuthContext、MCP required messageId、OAuth AS/JWKS 部署契约和官方 tenant 空值行为，并修复历史复制过程中发现的示例缺行。
 
 ---
 
@@ -59,7 +59,7 @@ V1.0 文件作为已发布历史版本保留，不再是当前实现依据。V1.
 1. 文件名带版本号的专项文档发布后视为不可变历史版本。
 2. 内容修正需复制最新文件、递增版本号并更新版本说明；不得悄悄改写已发布版本。
 3. `A2AMesh_开发实施计划.md` 是持续更新文件，不在文件名中增加版本号；历史由 Git 追踪。
-4. 协议规范版本、SDK 版本和项目文档版本彼此独立：当前文档 V1.1 基于 A2A Specification v1.0.1，协商值为 `1.0`。
+4. 协议规范版本、SDK 版本和项目文档版本彼此独立：当前文档 V1.2 基于 A2A Specification v1.0.1，协商值为 `1.0`。
 5. 只有相应验收门禁通过后，README 才能使用“已实现”“已兼容”等表述。
 
 ---
@@ -72,7 +72,7 @@ V1.0 文件作为已发布历史版本保留，不再是当前实现依据。V1.
 | `NFR` | 非功能需求 | `NFR-003` 单次投递不重复执行 |
 | `ADR` | 架构决策 | `ADR-004` JetStream 为唯一事件日志 |
 | `API` | 接口契约 | `API-A2A-006` SubscribeToTask |
-| `DATA` | 数据/Key 契约 | `DATA-TASK-001` Task 快照 |
+| `DATA` | 数据/Key 契约 | `DATA-PRINCIPAL-001` Principal/Credential/Alias |
 | `EVT` | 事件契约 | `EVT-PROGRESS-001` Progress Update |
 | `OBS` | 指标/告警 | `OBS-ALERT-004` Task lease 过期 |
 | `TEST` | 验收用例 | `TEST-A2A-001` 官方 SDK 黑盒 |
@@ -88,7 +88,7 @@ V1.0 文件作为已发布历史版本保留，不再是当前实现依据。V1.
 3. 规范对象以官方 A2A Proto/SDK 为准，不手写平行标准。
 4. 示例 ID 使用字符串；时间使用带时区 ISO 8601；持续时间使用毫秒整数。
 5. 外部 JSON 使用官方 ProtoJSON 字段名；内部扩展使用 `lowerCamelCase`。
-6. V1 是单 Mesh/单信任域部署，不建设 tenant、RBAC 或 Permission Center；仍保留 NKey 身份、调用者归属、Task 所有权和高风险工具策略。
+6. V1 是单 Mesh/单信任域部署，不建设 tenant、RBAC 或 Permission Center；官方 tenant 只接受空值，NKey/Bearer/OAuth 统一为 Canonical Principal。
 7. 文档不得包含真实 Token、NKey seed、Redis 密码、内部公网地址或用户隐私。
 8. Mermaid、JSON、SQL/Lua 伪代码必须配文字说明和验收条件。
 
@@ -120,10 +120,14 @@ V1.0 文件作为已发布历史版本保留，不再是当前实现依据。V1.
 | BR-006 断线恢复 | 任务生命周期、接口标准 | GetTask + SubscribeToTask | TEST-RECOVERY-001 客户端/Gateway/Peer 断线 |
 | BR-007 幂等执行 | Redis 数据、NATS 适配 | DATA-DEDUPE-001、claim_message | TEST-IDEMP-001 100 并发重复提交 |
 | BR-008 多 Agent 观察 | 任务生命周期、Runtime 适配 | Observer rules/policy | TEST-OBSERVER-001 防反馈环与只读默认 |
-| BR-009 可运维 | 监控规则 | OBS-ALERT-001～015 | TEST-OBS-001 指标/审计/告警/备份 |
+| BR-009 可运维 | 监控规则 | OBS-ALERT-001～020 | TEST-OBS-001 指标/审计/告警/备份 |
 | BR-010 可演进 | 全部专项 | 版本化 URI/Key/Envelope | TEST-VERSION-001 升级与旧协议隔离 |
 | BR-011 gRPC 互操作 | 总体架构、接口标准 | 官方 `A2AService` 11 RPC | TEST-GRPC-001 |
 | BR-012 MCP 互操作 | Runtime/MCP、接口标准 | MCP 2026-07-28 tools/resources + Task handle | TEST-MCP-001 |
+| BR-013 身份一致 | 总体、NATS、Redis、接口 | DATA-PRINCIPAL-001、签名 AuthContext | TEST-IDENTITY-001 |
+| BR-014 MCP 幂等提交 | Runtime/MCP、Redis、接口 | required messageId + canonical hash | TEST-MCP-IDEMP-001 |
+| BR-015 OAuth 部署闭环 | Runtime/MCP、监控、实施计划 | RFC9728/RFC8414、client_credentials、JWKS | TEST-OAUTH-001 |
+| BR-016 无租户互操作 | 对象、接口、Core、Redis | tenant empty/reject-before-side-effect | TEST-TENANT-001 |
 
 ## 8.2 非功能需求
 
@@ -137,12 +141,14 @@ V1.0 文件作为已发布历史版本保留，不再是当前实现依据。V1.
 | NFR-006 重启一致性 | Redis AOF、durable consumer、fencing | TEST-RECOVERY-001 |
 | NFR-007 隐私与脱敏 | Progress/日志/Tool Policy | TEST-SEC-001 |
 | NFR-008 不虚假宣称 HA | 单 Linux SPOF 明示、恢复而非 HA | TEST-DOC-001 文档声明检查 |
+| NFR-009 跨 Binding 身份一致 | Canonical Principal、不可改指 alias、统一 ownership | TEST-IDENTITY-001 |
+| NFR-010 OAuth fail closed | 短 TTL、JWKS cache 上限、未知 kid 拒绝 | TEST-OAUTH-001 |
 
 ---
 
 # 9. 文档集验收
 
-- 九份当前权威文档均存在且链接可达，八份 V1.0 历史文档不参与当前契约；
+- 九份当前权威文档均存在且链接可达，V1.0/V1.1 历史文档不参与当前契约；
 - 主章节、版本记录和权威边界完整；
 - A2A 版本、方法、状态和 Agent Card 字段一致；
 - NATS Subject、Redis Key、Progress Extension 在各文档中一致；

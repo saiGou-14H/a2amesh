@@ -28,14 +28,14 @@
 
 | 序号 | 文档 | 主要约束 |
 |---:|---|---|
-| 1 | 业务与总体架构设计 V1.1 | 定位、对称性、虚拟路由、拓扑、范围、NFR |
-| 2 | Agent Card 与协议对象规范 V1.1 | 官方对象、每 Agent Card、Bearer、扩展、状态 |
-| 3 | A2A 协议与 NATS 集成适配设计 V1.1 | Subject、Envelope、Registry RPC、11 操作、投递 |
-| 4 | Redis 状态平面与数据设计 V1.1 | DATA、Agent 查询、Key、Lua、lease、幂等、保留 |
-| 5 | 任务生命周期与长任务运行时设计 V1.1 | EVT、Supervisor、进度、SSE、Push、恢复 |
-| 6 | 编排器、Runtime 与工具适配设计 V1.1 | Plan、Adapter、Tool、Workspace、TEST |
-| 7 | 接口请求与响应标准 V1.1 | Gateway、A2A-Extensions、Bearer、官方错误码 |
-| 8 | 统计、审计与运行监控规则 V1.1 | Registry/Gateway 指标、日志、告警、保留 |
+| 1 | 业务与总体架构设计 V1.2 | 定位、对称性、Canonical Principal、OAuth、tenant 空值、NFR |
+| 2 | Agent Card 与协议对象规范 V1.2 | 官方对象、每 Agent Card、Credential、tenant、扩展、状态 |
+| 3 | A2A 协议与 NATS 集成适配设计 V1.2 | Subject、AuthContext、签名、Registry RPC、11 操作 |
+| 4 | Redis 状态平面与数据设计 V1.2 | DATA、Principal/Credential/Alias、Key、Lua、lease、幂等 |
+| 5 | 任务生命周期与长任务运行时设计 V1.2 | EVT、Task ownership、Supervisor、SSE、Push、恢复 |
+| 6 | 编排器、Runtime 与工具适配设计 V1.2 | Plan、Adapter、MCP messageId、OAuth AS、Tool |
+| 7 | 接口请求与响应标准 V1.2 | Gateway、身份归一、tenant、gRPC/MCP、错误码 |
+| 8 | 统计、审计与运行监控规则 V1.2 | Identity/OAuth、Registry/Gateway 指标、日志、告警 |
 | 9 | 本实施计划 | 当前状态、顺序、交付和门禁 |
 
 ## 1.3 不作为实施依据
@@ -71,7 +71,7 @@ Python 源文件：37
 | 私有 send/stream/get/cancel | 部分实现 | `runtime/agent.py` | 语义需迁移到 11 操作 |
 | Runtime Executor | 部分实现 | `runtime/executor.py` | 缺独立 heartbeat/lease |
 | Hermes/Codex/Claude/OpenCode Adapter | 部分实现 | `runtime/adapters/` | 需固定版本 probe/fixture |
-| Tool Registry/MCP | 部分实现 | `tools/` | 需风险策略/workspace 安全 |
+| Tool Registry/MCP | 部分实现 | `tools/` | 需风险策略、messageId 幂等、OAuth AS、workspace 安全 |
 | Planner/Dispatcher/Tracker/Aggregator | 基础实现 | `orchestrator/` | 需 Redis 状态和官方 Task |
 | KV/Memory | 基础实现 | `memory/store.py` | 不作为 Redis State 替代 |
 | 官方 Agent Card well-known | 缺失 | — | C5 实现 |
@@ -82,6 +82,8 @@ Python 源文件：37
 | A2A JSON-RPC/SSE Gateway | 缺失 | — | C5 实现 |
 | A2A gRPC Gateway | 缺失 | — | C5 实现，共用 Core/语义套件 |
 | MCP Client/Server Bridge | 部分 Client 原型、Server 缺失 | `tools/` | C6 按 MCP 2026-07-28 完成 |
+| Identity Resolver/Credential Registry | 缺失 | — | C2/C3/C5 实现 |
+| 外部 OAuth AS 集成/JWKS | 缺失 | — | C6/C7 实现；A2AMesh 不签发 Token |
 | Push Dispatcher/Observer | 缺失 | — | C6 实现 |
 | 生产监控/备份/真机门禁 | 缺失 | — | C6～C8 |
 
@@ -111,6 +113,9 @@ Python 源文件：37
 10. MCP 2026-07-28 Client（stdio/Streamable HTTP）和 Server Bridge（tools/resources）。
 11. 指标、审计、Trace、健康、告警、备份。
 12. Linux + 2 Windows 真机任意方向调用。
+13. NKey/Bearer/OAuth 统一 Canonical Principal、可信 AuthContext 与不可改指 alias。
+14. MCP `mesh_submit_task.messageId` 强制幂等和 canonical payload hash。
+15. 官方 tenant 字段只接受空值，非空在副作用前拒绝。
 
 ## 3.2 V1 明确不实现
 
@@ -163,10 +168,17 @@ src/a2amesh/
 │       ├── claim_message.lua
 │       ├── transition_task.lua
 │       ├── lease.lua
-│       └── upsert_card.lua
+│       ├── upsert_card.lua
+│       └── resolve_principal.lua
+├── identity/
+│   ├── principal.py
+│   ├── credentials.py
+│   ├── aliases.py
+│   └── auth_context.py
 ├── gateway/
 │   ├── app.py
 │   ├── auth.py
+│   ├── oauth_resource.py
 │   ├── routes.py
 │   ├── sse.py
 │   ├── grpc_server.py
@@ -245,6 +257,8 @@ mcp = [
 6. 每个阶段有退出门禁，未通过不得开始兼容宣传。
 7. 真机配置和 secret 不提交 Git。
 8. 每阶段提交粒度小、可回滚；文档/Schema/测试同提交。
+9. callerPrincipal 只由可信入口注入；任何业务 payload 自报身份必须失败。
+10. tenant 验证、Principal resolve、幂等 claim 的顺序不可调整。
 
 ---
 
@@ -283,6 +297,7 @@ docs/specs/
 5. 建立 `current/target` 能力矩阵。
 6. 保留当前 31 passed / 4 skipped 基线。
 7. CI 增加 `pytest`、`ruff`、`compileall`、文档链接检查。
+8. 增加非空 tenant、三类 Credential、AuthContext 和 MCP messageId fixture。
 
 ## 7.4 退出门禁
 
@@ -323,6 +338,8 @@ tests/unit/protocol/
 6. 建立错误分类，不依赖 HTTP/NATS。
 7. 将旧 contracts 标记 internal/compat，禁止新代码导入其标准对象。
 8. 为每个操作写 transport-independent contract test。
+9. RequestContext 明确定义 Canonical Principal；11 个操作不得直接读取 Token/Binding metadata。
+10. 官方 tenant 非空统一在 Core 前置 validator 拒绝，空值保持 SDK 兼容。
 
 ## 8.4 退出门禁
 
@@ -338,7 +355,7 @@ tests/unit/protocol/
 
 ## 9.1 目标
 
-替换单进程 Task/Card 状态，建立共享幂等、lease、List 和恢复基础。
+替换单进程 Task/Card 状态，建立 Principal/Credential/Alias、共享幂等、lease、List 和恢复基础。
 
 ## 9.2 文件
 
@@ -356,6 +373,8 @@ tests/unit/protocol/
 8. Push config/delivery state。
 9. NATS State Service handler，认证身份覆盖 payload。
 10. retention cleaner/backup metrics。
+11. `resolve_principal.lua`、Credential disable/rotation、不可改指 alias CAS/环测试。
+12. Task 固化 callerPrincipal/credentialId/aliasGeneration，历史 owner 不随配置变化。
 
 ## 9.4 测试
 
@@ -366,6 +385,8 @@ tests/unit/protocol/
 旧 token late write → reject
 List cursor → 无重/漏
 Redis restart → Task/Card/dedupe 恢复
+Credential rotation/disable → 新请求切换或拒绝，历史 owner 不变
+alias chain/loop/retarget → reject
 公网/Windows → 6379 不可达
 ```
 
@@ -403,6 +424,8 @@ nats/config/*.conf
 8. 11 操作语义套件复用 C1 tests。
 9. timeout retry 使用稳定 messageId。
 10. 禁止宽 `_INBOX.>` 和可预测输出 subject。
+11. RFC 8785 canonical Envelope + NKey Ed25519 AuthContext 签名/验证。
+12. signer/method/subject/expiry/requestId/deadline/replay 校验；payload caller 字段不可信。
 
 ## 10.4 退出门禁
 
@@ -410,6 +433,7 @@ nats/config/*.conf
 - 非授权 Peer 无法订阅他人回复/Task event；
 - Core 与 NATS Binding 语义等价；
 - NATS 重启/重连不重复终态。
+- Peer/Gateway/MCP Bridge 均不能伪造他人 Principal，过期/重放 AuthContext 在 claim 前拒绝。
 
 ---
 
@@ -484,13 +508,15 @@ tests/conformance/test_official_grpc_*.py
 5. SendStreaming/Subscribe SSE。
 6. SSE comment keepalive、慢客户端上限。
 7. Get/List/Cancel。
-8. 固定 `meshBearer` 部署级认证、轮换双 key 窗口；不建设 RBAC。
+8. 每客户端独立 `meshBearer` credentialId/secret、常量时间验证、轮换窗口；不建设 RBAC。
 9. 九个 A2A Error 的全名、-32001～-32009 与 HTTP 映射测试。
 10. Gateway 非主节点：Peer 东西向调用旁路测试。
 11. 官方 `A2AService` 11 个 RPC，两个 server-streaming，metadata/deadline/cancel。
 12. JSON-RPC/gRPC/NATS 共用 operation fixture、状态机、错误和幂等套件。
 13. 官方 SDK/stub 独立虚拟环境黑盒。
 14. 关闭旧协议默认入口。
+15. JSON-RPC/gRPC 非空 tenant 分别返回 -32602/INVALID_ARGUMENT，且无 Task/Redis/NATS 副作用。
+16. Bearer 解析为 Canonical Principal，跨 Binding ownership/Get/List/Cancel 套件通过。
 
 ## 12.4 退出门禁
 
@@ -514,6 +540,9 @@ tests/conformance/test_official_grpc_*.py
 10. MCP Client：stdio/Streamable HTTP、initialize、tools/resources/prompts、schema/cache/cancel。
 11. MCP Server Bridge：`/mcp`、tools/resources、A2A Task handle 映射。
 12. MCP OAuth 2.1 Protected Resource Metadata、Origin、audience/resource、旧 HTTP+SSE 拒绝。
+13. `mesh_submit_task` JSON Schema 强制 messageId；canonical SendMessageRequest hash；created/same/conflict 套件。
+14. 外部 AS：RFC 9728/RFC 8414、client_credentials、issuer/audience/scope/TTL、RS256/ES256、JWKS rotation/outage。
+15. OAuth client_id → Canonical Principal；Token 不透传；AS/JWKS 故障 fail closed。
 
 ## 13.2 退出门禁
 
@@ -524,6 +553,8 @@ tests/conformance/test_official_grpc_*.py
 - 日志 secret/思维链扫描通过；
 - Card 签名篡改失败（若声明）。
 - MCP stdio/Streamable HTTP 与 OAuth/Origin/Task handle 黑盒通过；Windows 无 MCP 入站。
+- MCP 同 messageId 超时/并发重试只产生一个 Task；冲突 payload 不执行。
+- JWKS rotation/outage、未知 kid、错误 audience/scope、Token expiry 全部 fail closed。
 
 完成 C6 后达到本项目定义的 A2A JSON-RPC/gRPC 与 MCP 功能覆盖；兼容声明仍以 C8 真机和独立黑盒证据为准。
 
@@ -540,6 +571,7 @@ tests/conformance/test_official_grpc_*.py
 - 日志轮转、磁盘告警、备份；
 - firewall 只开放 HTTPS 和 NATS TLS/WSS；
 - secret 文件最小权限。
+- 配置外部 OAuth AS issuer/resource/JWKS，验证 metadata 与 key rotation；AS 可同机独立容器或外部托管，但不是 A2AMesh 内嵌签发器。
 
 ## 14.2 Windows
 
@@ -786,6 +818,10 @@ Redis URL、Bearer、Webhook encryption key、NKey seed 不进入 YAML/Git。
 | R-010 | 公网 Linux 单点 | 明示 SPOF，V2 HA |
 | R-011 | Runtime CLI 参数漂移 | probe、固定 fixture、真机 smoke |
 | R-012 | 文档与代码失配 | 每阶段文档/测试同提交，声明门禁 |
+| R-013 | Binding 身份漂移/伪造 | Canonical Principal、签名 AuthContext、跨 Binding contract test |
+| R-014 | MCP 网络重试重复执行 | required messageId、canonical hash、State dedupe |
+| R-015 | OAuth AS/JWKS 故障或错误轮换 | 短 TTL、缓存上限、未知 kid fail closed、Runbook |
+| R-016 | tenant 误入数据模型 | 前置拒绝测试、Redis Key/schema 扫描 |
 
 ---
 
@@ -816,6 +852,7 @@ Redis URL、Bearer、Webhook encryption key、NKey seed 不进入 YAML/Git。
 - Redis/NATS/Peer/Gateway/Runtime 故障注入通过；
 - 长任务心跳、断线、取消、恢复通过；
 - MCP/Push/Observer/Tool 安全门禁通过；
+- TEST-IDENTITY-001、TEST-MCP-IDEMP-001、TEST-OAUTH-001、TEST-TENANT-001 全部通过；
 - Linux + 2 Windows 任意方向调用通过；
 - 监控、审计、告警、备份、Runbook 完整；
 - 无高危未决缺陷；
