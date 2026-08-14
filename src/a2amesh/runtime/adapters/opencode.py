@@ -13,4 +13,7 @@ class OpenCodeAdapter(AgentAdapter):
         return cmd
 
     def resume_command(self, session_id, prompt, workdir, opts):
-        return ["opencode", "-s", session_id, "run", prompt]
+        cmd = ["opencode", "run", "--session", session_id]
+        if opts.get("model"):
+            cmd += ["--model", opts["model"]]
+        return cmd + [prompt]

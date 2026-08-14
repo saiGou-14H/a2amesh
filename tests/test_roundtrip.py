@@ -1,12 +1,14 @@
 """P1 集成测试：两 agent message/send 往返 + get_card + discover + 工具。"""
 import asyncio
 import sys
+import tempfile
 from pathlib import Path
+
+import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 import nats
-
 from a2amesh.a2anats.client import MeshClient
 from a2amesh.a2anats.server import MeshServer
 from a2amesh.contracts.models import AgentCard, Message, TextPart
@@ -44,6 +46,7 @@ class FakeHandler:
         return {"ok": True}
 
 
+@pytest.mark.asyncio
 async def test_roundtrip():
     # agent_b 作为服务端
     nc_b = await nats.connect(NATS_URL)
@@ -73,21 +76,24 @@ async def test_roundtrip():
     await nc_b.close()
 
 
-async def test_tools():
+@pytest.mark.asyncio
+async def test_tools(tmp_path: Path):
+    (tmp_path / "src").mkdir()
     reg = ToolRegistry()
-    reg.load_builtin()
+    reg.load_builtin(workspace=str(tmp_path))
     tools = reg.list()
     assert {t.name for t in tools} >= {"read_file", "write_file", "run_shell", "list_dir"}
     print("✅ builtin 工具:", sorted(t.name for t in tools))
 
-    result = await reg.call("list_dir", {"path": "/root/a2amesh"})
+    result = await reg.call("list_dir", {"path": "."})
     assert "entries" in result
     assert "src" in result["entries"]
     print("✅ tools/call list_dir:", result["entries"])
 
 
 async def main():
-    await test_tools()
+    with tempfile.TemporaryDirectory() as temp_dir:
+        await test_tools(Path(temp_dir))
     await test_roundtrip()
     print("\n🎉 全部通过")
 

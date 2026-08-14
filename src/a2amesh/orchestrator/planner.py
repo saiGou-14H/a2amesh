@@ -26,7 +26,11 @@ class Planner:
                 return self._validate(res.output)
             except Exception as e:
                 last_err = e
-                p = base + f"\n\n【上一次输出不合规：{e}】\n请严格按照 JSON Schema 重新输出，只输出 JSON。"
+                p = (
+                    base
+                    + f"\n\n【上一次输出不合规：{e}】\n"
+                    "请严格按照 JSON Schema 重新输出，只输出 JSON。"
+                )
         raise RuntimeError(f"planner failed after {self.max_retries} retries: {last_err}")
 
     @staticmethod

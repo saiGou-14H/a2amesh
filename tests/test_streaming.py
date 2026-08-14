@@ -3,10 +3,11 @@ import asyncio
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 import nats
-
 from a2amesh.a2anats.client import MeshClient
 from a2amesh.config import Config
 from a2amesh.contracts.models import Message, TextPart
@@ -32,11 +33,11 @@ async def main():
     cfg = Config.model_validate({
         "nats": {"url": NATS_URL, "nkey_seed_env": "A2AMESH_NKEY_SEED"},
         "agent": {"name": "win1", "description": "stream test",
-                  "default_runtime": "echo", "workdir": None,
-                  "tools_dir": "./nonexistent"},
+                  "default_runtime": "hermes", "workdir": None,
+                  "runtimes": ["hermes"], "tools_dir": "./nonexistent"},
         "mcp": [],
     })
-    rt = AgentRuntime(cfg, adapters={"echo": SlowEchoAdapter()})
+    rt = AgentRuntime(cfg, adapters={"hermes": SlowEchoAdapter()})
     await rt.start()
     await asyncio.sleep(0.5)
 
@@ -44,7 +45,7 @@ async def main():
     client = MeshClient(nc)
 
     task_id, events = await client.send_message_stream(
-        "win1", Message(role="user", parts=[TextPart(text="hi")]), runtime="echo")
+        "win1", Message(role="user", parts=[TextPart(text="hi")]), runtime="hermes")
 
     kinds = [e.get("kind") for e in events]
     print("事件序列:", kinds)
@@ -60,8 +61,13 @@ async def main():
     print(f"✅ 流式 4 类事件按序到达（{len(events)} 个），最终 completed")
 
     await nc.close()
-    await rt.nc.close()
+    await rt.close()
     print("\n🎉 P4 流式测试通过")
+
+
+@pytest.mark.asyncio
+async def test_streaming_e2e():
+    await main()
 
 
 if __name__ == "__main__":

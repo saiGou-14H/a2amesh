@@ -1,8 +1,9 @@
-"""Tool 模型。"""
+"""Tool metadata and handler contract."""
+
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Awaitable, Callable
 
 
 @dataclass
@@ -13,4 +14,4 @@ class Tool:
     handler: Callable[..., Awaitable[dict]]
     source: str = "custom"
     risk: str = "low"
-    public: bool = True
+    public: bool = False

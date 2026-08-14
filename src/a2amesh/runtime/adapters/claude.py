@@ -7,12 +7,17 @@ class ClaudeAdapter(AgentAdapter):
     binary = "claude"
 
     def command(self, prompt, workdir, opts):
-        cmd = ["claude", "-p", prompt]
+        cmd = ["claude", "-p"]
         if opts.get("max_turns"):
             cmd += ["--max-turns", str(opts["max_turns"])]
         if opts.get("output_json"):
-            cmd.append("--output-format json")
-        return cmd
+            cmd += ["--output-format", "json"]
+        return cmd + [prompt]
 
     def resume_command(self, session_id, prompt, workdir, opts):
-        return self.command(prompt, workdir, opts) + ["--resume", session_id]
+        cmd = ["claude", "-p", "--resume", session_id]
+        if opts.get("max_turns"):
+            cmd += ["--max-turns", str(opts["max_turns"])]
+        if opts.get("output_json"):
+            cmd += ["--output-format", "json"]
+        return cmd + [prompt]

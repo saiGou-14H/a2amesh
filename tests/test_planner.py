@@ -3,6 +3,8 @@ import asyncio
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from a2amesh.contracts.models import AgentCard
@@ -25,13 +27,17 @@ async def main():
             '"prompt":"do X","status":"pending"}]}')
 
     # 1. 合法输出直接解析
-    plan = await Planner(FakeExecutor([good])).plan("demo", [AgentCard(name="win1", description="w")])
+    plan = await Planner(FakeExecutor([good])).plan(
+        "demo", [AgentCard(name="win1", description="w")]
+    )
     assert plan.task_id == "t1" and plan.steps[0].id == "s1"
     print("✅ Planner 解析合法 Plan（含 json 提取 + schema 校验）")
 
     # 2. 非法（markdown 包裹）→ 重试 → 合法
     bad = '```json\n{"task_id":"t1","steps":"oops"}\n```'
-    plan2 = await Planner(FakeExecutor([bad, good])).plan("demo", [AgentCard(name="win1", description="w")])
+    plan2 = await Planner(FakeExecutor([bad, good])).plan(
+        "demo", [AgentCard(name="win1", description="w")]
+    )
     assert plan2.task_id == "t1"
     print("✅ Planner 输出不合规时带错误重试成功")
 
@@ -43,6 +49,11 @@ async def main():
         print("✅ Planner 多次失败后抛 RuntimeError")
 
     print("\n🎉 Planner 测试通过")
+
+
+@pytest.mark.asyncio
+async def test_planner_validation_and_retry():
+    await main()
 
 
 if __name__ == "__main__":

@@ -7,7 +7,7 @@ class HermesAdapter(AgentAdapter):
     binary = "hermes"
 
     def command(self, prompt, workdir, opts):
-        return ["hermes", "chat", "-q", prompt]
+        return ["hermes", "chat", "-q", prompt, "-Q"]
 
     def resume_command(self, session_id, prompt, workdir, opts):
-        return ["hermes", "--resume", session_id, "-q", prompt]
+        return ["hermes", "chat", "--resume", session_id, "-q", prompt, "-Q"]

@@ -9,10 +9,13 @@ class CodexAdapter(AgentAdapter):
     def command(self, prompt, workdir, opts):
         cmd = ["codex", "exec"]
         if opts.get("full_auto"):
-            cmd.append("--full-auto")
+            cmd.append("--approve-for-me")
         if opts.get("danger_full_access"):
-            cmd += ["--sandbox", "danger-full-access"]
+            cmd.append("--dangerously-bypass-approvals-and-sandbox")
         return cmd + [prompt]
 
     def resume_command(self, session_id, prompt, workdir, opts):
-        return ["codex", "--resume", session_id, "exec", prompt]
+        cmd = ["codex", "exec", "resume"]
+        if opts.get("danger_full_access"):
+            cmd.append("--dangerously-bypass-approvals-and-sandbox")
+        return cmd + [session_id, prompt]

@@ -1,17 +1,32 @@
 """Orchestrator：规划 → 拓扑并行派发 → 聚合；可选注册为对称 peer。"""
 from __future__ import annotations
 
+import asyncio
+import hashlib
 import os
+from uuid import uuid4
 
 import nats
-
 from a2amesh.a2anats.client import MeshClient
-from a2amesh.a2anats.errors import JsonRpcError, METHOD_NOT_FOUND
+from a2amesh.a2anats.errors import (
+    INVALID_PARAMS,
+    METHOD_NOT_FOUND,
+    UNAVAILABLE,
+    JsonRpcError,
+)
 from a2amesh.a2anats.server import MeshServer
 from a2amesh.config import Config
-from a2amesh.contracts.models import AgentCard, Message, Skill, Task, TextPart
+from a2amesh.contracts.models import (
+    AgentCard,
+    Message,
+    Skill,
+    Task,
+    TaskStatus,
+    TextPart,
+)
 from a2amesh.runtime.adapters.registry import detect_adapters
 from a2amesh.runtime.executor import Executor
+
 from .aggregator import Aggregator
 from .dispatcher import Dispatcher
 from .planner import Planner
@@ -24,11 +39,13 @@ class Orchestrator:
         self.dispatcher = dispatcher or Dispatcher(client)
         self.aggregator = aggregator or Aggregator()
 
-    async def handle(self, prompt: str) -> Task:
+    async def handle(self, prompt: str, *, task_id: str | None = None) -> Task:
         agents = await self.client.discover()
         plan = await self.planner.plan(prompt, agents)
-        await self.dispatcher.run(plan)
-        return self.aggregator.collect(plan, self.dispatcher.results)
+        if task_id is not None:
+            plan.task_id = task_id
+        results = await self.dispatcher.run(plan)
+        return self.aggregator.collect(plan, results)
 
 
 class OrchestratorRuntime:
@@ -38,12 +55,18 @@ class OrchestratorRuntime:
         self.cfg = cfg
         self._planner_override = planner
         self.nc: nats.NATS | None = None
+        self._tasks: dict[str, Task] = {}
+        self._fingerprints: dict[str, str] = {}
+        self._futures: dict[str, asyncio.Future[Task]] = {}
+        self._task_lock = asyncio.Lock()
 
     async def start(self):
         from a2amesh.logging_setup import setup_logging
         setup_logging(self.cfg.observability.log_level)
         seed = os.environ.get(self.cfg.nats.nkey_seed_env)
-        kwargs = {"nkeys_seed_str": seed} if seed else {}
+        kwargs = {"inbox_prefix": "_INBOX.orchestrator"}
+        if seed:
+            kwargs["nkeys_seed_str"] = seed
         self.nc = await nats.connect(self.cfg.nats.url, **kwargs)
         self.client = MeshClient(self.nc)
         if self._planner_override is not None:
@@ -69,17 +92,56 @@ class OrchestratorRuntime:
     async def handle_task(self, params: dict) -> dict:
         msg = Message(**params["message"])
         text = "".join(p.text for p in msg.parts if isinstance(p, TextPart))
-        task = await self.orch.handle(text)
-        return task.model_dump()
+        metadata = params.get("metadata") or {}
+        task_id = metadata.get("taskId") or uuid4().hex
+        fingerprint = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        async with self._task_lock:
+            existing = self._fingerprints.get(task_id)
+            if existing is not None and existing != fingerprint:
+                raise JsonRpcError(
+                    INVALID_PARAMS,
+                    "taskId already exists with different payload",
+                )
+            future = self._futures.get(task_id)
+            if future is None:
+                future = asyncio.get_running_loop().create_future()
+                self._futures[task_id] = future
+                self._fingerprints[task_id] = fingerprint
+                self._tasks[task_id] = Task(
+                    id=task_id,
+                    status=TaskStatus(state="working"),
+                    history=[msg],
+                )
+                owner = True
+            else:
+                owner = False
+
+        if not owner:
+            return (await asyncio.shield(future)).model_dump(mode="json")
+        try:
+            task = await self.orch.handle(text, task_id=task_id)
+            self._tasks[task_id] = task
+            if not future.done():
+                future.set_result(task)
+            return task.model_dump(mode="json")
+        except BaseException as exc:
+            if not future.done():
+                future.set_exception(exc)
+                future.exception()
+            raise
 
     async def handle_task_stream(self, params, msg):
         raise JsonRpcError(METHOD_NOT_FOUND, "orchestrator 不支持流式")
 
     async def get_task(self, params):
-        return {}
+        task_id = params["id"]
+        task = self._tasks.get(task_id)
+        if task is None:
+            raise JsonRpcError(UNAVAILABLE, f"task not found: {task_id}")
+        return task.model_dump(mode="json")
 
     async def cancel(self, params):
-        return {"canceled": False}
+        raise JsonRpcError(METHOD_NOT_FOUND, "orchestrator cancel is not implemented")
 
     async def call_tool(self, params):
         raise JsonRpcError(METHOD_NOT_FOUND, "orchestrator 无工具")

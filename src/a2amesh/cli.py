@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 import sys
 from pathlib import Path
 
@@ -21,6 +22,9 @@ def main(argv=None) -> int:
     p_boot = sub.add_parser("bootstrap", help="生成 NKey seed 写入 .env")
     p_boot.add_argument("--dir", default=".")
     p_boot.add_argument("--env", default="A2AMESH_NKEY_SEED")
+    p_boot.add_argument(
+        "--force", action="store_true", help="明确轮换已存在的 NKey seed"
+    )
 
     p_agent = sub.add_parser("agent", help="启动 agent 服务")
     p_agent.add_argument("action", nargs="?", default="start", choices=["start"])
@@ -45,8 +49,8 @@ def main(argv=None) -> int:
         asyncio.run(cmd_orchestrator(args))
         return 0
     if args.cmd == "ingress":
-        print("ingress 尚未实现（P6）")
-        return 0
+        print("ingress 尚未实现（roadmap P6）", file=sys.stderr)
+        return 2
     return 0
 
 
@@ -61,10 +65,12 @@ def cmd_init(args) -> int:
         print(f"已生成 {yaml_path}")
     env_path = d / ".env"
     if not env_path.exists():
+        env_path.touch(mode=0o600)
         env_path.write_text(
             f"A2AMESH_NKEY_SEED=\nA2AMESH_NATS_URL={args.nats}\nA2AMESH_AGENT_NAME={args.name}\n",
             encoding="utf-8",
         )
+        os.chmod(env_path, 0o600)
         print(f"已生成 {env_path}")
     print("下一步：a2amesh bootstrap 生成 NKey → a2amesh agent start")
     return 0
@@ -73,17 +79,32 @@ def cmd_init(args) -> int:
 def cmd_bootstrap(args) -> int:
     import nacl.signing
     import nkeys
-    from dotenv import set_key
+    from dotenv import dotenv_values, set_key
 
     env_path = Path(args.dir) / ".env"
     if not env_path.exists():
         print("先运行 a2amesh init")
         return 1
+    os.chmod(env_path, 0o600)
+    existing = dotenv_values(env_path).get(args.env)
+    if existing and not getattr(args, "force", False):
+        try:
+            public_key = nkeys.from_seed(existing.encode()).public_key.decode()
+        except Exception:
+            print(
+                f"{args.env} 已存在但无法解析；如需替换请显式使用 --force",
+                file=sys.stderr,
+            )
+            return 1
+        print(f"{args.env} 已存在，未轮换（使用 --force 才会轮换）")
+        print(f"public key（交给 NATS 管理员登记到 nats.conf）: {public_key}")
+        return 0
     sk = nacl.signing.SigningKey.generate()
     seed_bytes = nkeys.encode_seed(bytes(sk), nkeys.PREFIX_BYTE_USER)
     seed = seed_bytes.decode()  # str 用于 .env / nats-py
     kp = nkeys.from_seed(seed_bytes)  # bytes 用于 from_seed
     set_key(str(env_path), args.env, seed)
+    os.chmod(env_path, 0o600)
     print(f"seed 已写入 {env_path}（{args.env}）")
     print(f"public key（交给 NATS 管理员登记到 nats.conf）: {kp.public_key.decode()}")
     return 0
@@ -100,7 +121,7 @@ async def cmd_agent(args) -> None:
     try:
         await asyncio.Event().wait()  # 常驻
     finally:
-        await rt.nc.close()
+        await rt.close()
 
 
 async def cmd_orchestrator(args) -> None:

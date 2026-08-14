@@ -3,10 +3,11 @@ import asyncio
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 import nats
-
 from a2amesh.a2anats.client import MeshClient
 from a2amesh.a2anats.server import MeshServer
 from a2amesh.contracts.models import AgentCard, Message, Plan, Step, TextPart
@@ -93,6 +94,11 @@ async def main():
 
     await nc.close()
     print("\n🎉 P5 编排器测试通过")
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_e2e():
+    await main()
 
 
 if __name__ == "__main__":

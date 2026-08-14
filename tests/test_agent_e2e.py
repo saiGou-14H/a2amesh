@@ -3,10 +3,11 @@ import asyncio
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 import nats
-
 from a2amesh.a2anats.client import MeshClient
 from a2amesh.config import Config
 from a2amesh.runtime.agent import AgentRuntime
@@ -18,8 +19,9 @@ async def main():
     cfg = Config.model_validate({
         "nats": {"url": NATS_URL, "nkey_seed_env": "A2AMESH_NKEY_SEED"},
         "agent": {"name": "win1", "description": "e2e test agent",
-                  "default_runtime": "hermes", "workdir": None,
-                  "runtimes": ["hermes"], "tools_dir": "./nonexistent"},
+                  "default_runtime": "hermes", "workdir": "/root/a2amesh",
+                  "runtimes": ["hermes"], "tools_dir": "./nonexistent",
+                  "public_tools": ["read_file", "list_dir"]},
         "mcp": [],
     })
     rt = AgentRuntime(cfg)
@@ -50,8 +52,13 @@ async def main():
     print("✅ discover:", names)
 
     await nc.close()
-    await rt.nc.close()
+    await rt.close()
     print("\n🎉 AgentRuntime 端到端通过")
+
+
+@pytest.mark.asyncio
+async def test_agent_runtime_e2e():
+    await main()
 
 
 if __name__ == "__main__":

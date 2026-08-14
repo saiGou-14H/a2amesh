@@ -1,7 +1,7 @@
 """数据模型（pydantic v2）。与 schemas/*.json 保持一致。"""
 from __future__ import annotations
 
-from typing import Literal, Optional, Union
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -21,7 +21,7 @@ class DataPart(BaseModel):
     data: dict
 
 
-Part = Union[TextPart, FilePart, DataPart]
+Part = TextPart | FilePart | DataPart
 
 
 class Message(BaseModel):
@@ -78,7 +78,7 @@ class Step(BaseModel):
     prompt: str
     status: Literal["pending", "running", "succeeded", "failed"] = "pending"
     depends_on: list[str] = []
-    runtime: Optional[Literal["hermes", "codex", "claude", "opencode"]] = None
+    runtime: Literal["hermes", "codex", "claude", "opencode"] | None = None
 
 
 class Plan(BaseModel):
