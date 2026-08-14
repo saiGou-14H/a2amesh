@@ -28,17 +28,17 @@
 
 | 序号 | 文档 | 主要约束 |
 |---:|---|---|
-| 1 | 业务与总体架构设计 V1.4 | 交付剖面、状态事件提交、授权、容量、恢复与兼容 |
-| 2 | Agent Card 与协议对象规范 V1.4 | 官方对象、Card publisher、Credential、剖面化 Binding 发布 |
-| 3 | A2A 协议与 NATS 集成适配设计 V1.4 | Subject、AuthContext、Event Relay、N/N-1 兼容 |
-| 4 | Redis 状态平面与数据设计 V1.4 | outbox、effect ledger、grant、admission、Lua、lease、幂等 |
-| 5 | 任务生命周期与长任务运行时设计 V1.4 | Task ownership、Supervisor、副作用、取消对账、恢复 |
-| 6 | 编排器、Runtime 与工具适配设计 V1.4 | Capability、SideEffectAdapter、公平准入、Runtime/Tool/MCP |
-| 7 | 接口请求与响应标准 V1.4 | 身份授权、tenant、429/503、JSON-RPC/gRPC/MCP |
-| 8 | Artifact 与对象存储设计 V1.0 | blob、上传完成、完整性、访问票据、删除、保留与恢复 |
-| 9 | 受信配置与变更治理设计 V1.0 | signed bundle、generation、READY、激活/回滚/撤销、publisher ownership |
-| 10 | 人工对账与运维操作设计 V1.0 | case、evidence、claim、resolution、SLA、终态不可改写 |
-| 11 | 统计、审计与运行监控规则 V1.4 | outbox/effect/admission/Artifact/config/reconciliation、日志、告警、RTO/RPO |
+| 1 | 业务与总体架构设计 V1.5 | 交付剖面、状态事件提交、授权、容量、恢复与兼容 |
+| 2 | Agent Card 与协议对象规范 V1.5 | 官方对象、Card publisher、Credential、剖面化 Binding 发布 |
+| 3 | A2A 协议与 NATS 集成适配设计 V1.5 | Subject、AuthContext、Event Relay、N/N-1 兼容 |
+| 4 | Redis 状态平面与数据设计 V1.5 | outbox、effect ledger、grant、admission、Lua、lease、幂等 |
+| 5 | 任务生命周期与长任务运行时设计 V1.5 | Task ownership、Supervisor、副作用、取消对账、恢复 |
+| 6 | 编排器、Runtime 与工具适配设计 V1.5 | Capability、SideEffectAdapter、公平准入、Runtime/Tool/MCP |
+| 7 | 接口请求与响应标准 V1.5 | 身份授权、tenant、429/503、JSON-RPC/gRPC/MCP |
+| 8 | Artifact 与对象存储设计 V1.1 | blob、上传完成、完整性、访问票据、删除、保留与恢复 |
+| 9 | 受信配置与变更治理设计 V1.1 | signed bundle、generation、READY、激活/回滚/撤销、publisher ownership |
+| 10 | 人工对账与运维操作设计 V1.1 | case、evidence、claim、resolution、SLA、终态不可改写 |
+| 11 | 统计、审计与运行监控规则 V1.5 | outbox/effect/admission/Artifact/config/reconciliation、日志、告警、RTO/RPO |
 | 12 | 本实施计划 | 当前状态、顺序、交付和门禁 |
 
 ## 1.3 不作为实施依据
@@ -482,7 +482,7 @@ nats/config/*.conf
 
 ## 10.4 退出门禁
 
-- 两 Peer 并发实例只执行一次；
+- 两 Peer 并发处理同一规范化请求时只创建或返回同一个 Task，旧 owner 不能推进权威状态；
 - 非授权 Peer 无法订阅他人回复/Task event；
 - Core 与 NATS Binding 语义等价；
 - NATS 重启/重连不重复终态。
@@ -713,7 +713,7 @@ tests/conformance/test_official_client_*.py
 1. 目标交付剖面的全部自动化测试通过，无未知 skip。
 2. 目标剖面的官方 SDK/stub/MCP 报告归档。
 3. CORE 至少 Linux + 1 NAT Peer；INTEROP/EXTENDED 使用 Linux + 2 Windows 目标矩阵。
-4. 故障恢复无重复副作用，UNKNOWN effect 有可认领、可收证、可裁决、可审计的对账路径，且不改写失败 Task 终态。
+4. 故障恢复不自动重放 `UNKNOWN` effect；已知 effect 复用相同 provider idempotency key，UNKNOWN case 有可认领、可收证、可裁决、可审计的对账路径，且不改写失败 Task 终态。
 5. 指标/告警/Runbook/备份和 RTO/RPO 演练通过。
 6. Artifact blob/metadata、active config generation 和 reconciliation case/effect/Task 可跨存储对账。
 7. 文档/代码/配置一致。
@@ -901,7 +901,7 @@ Credential/Alias/Grant、Card publisher、delivery profile、Artifact policy、R
 | ID | 风险 | 控制 |
 |---|---|---|
 | R-001 | SDK/规范版本漂移 | 固定版本、官方 fixture、升级评审 |
-| R-002 | 重试重复副作用 | messageId+payloadHash+State dedupe+side-effect ledger/provider idempotency |
+| R-002 | 重试重复副作用 | Task dedupe 只防重复 Task；effectId、side-effect ledger、provider idempotency 和 UNKNOWN 对账控制外部效果，不声明通用至多一次 |
 | R-003 | lease split-brain | fencing token、每副作用前校验 |
 | R-004 | stdout 静默误判 | 独立 heartbeat/process watchdog |
 | R-005 | 私有 subject 泄露 | 随机 inbox、NKey ACL 实测 |

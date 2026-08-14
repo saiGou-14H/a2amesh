@@ -2,9 +2,9 @@
 
 对称 Agent Mesh：多台异构机器的 AI Agent（Hermes / Codex / OpenCode / Claude Code）经公网 NATS 互联，任意 agent 可调度任意 agent，NAT 友好。
 
-> **兼容性状态：** 当前代码是 A2A-inspired 的私有 NATS RPC 原型，尚未通过官方黑盒验证。V1.4 采用累积交付剖面：先完成 A2A JSON-RPC/SSE `CORE`，再按门禁增加 gRPC/Push `INTEROP` 与 MCP/Observer `EXTENDED`。
+> **兼容性状态：** 当前代码是 A2A-inspired 的私有 NATS RPC 原型，尚未通过官方黑盒验证。当前 V1.5 主专项采用累积交付剖面：先完成 A2A JSON-RPC/SSE `CORE`，再按门禁增加 gRPC/Push `INTEROP` 与 MCP/Observer `EXTENDED`。
 
-最新可实施设计入口见 [A2AMesh V1.4 设计文档索引](docs/specs/README.md)，包含 11 份当前版本化专项文档及 1 份开发实施计划；已被替代的 V1.0～V1.3 主专项位于 [历史归档](docs/archive/README.md)，不参与当前实现合同。
+最新可实施设计入口见 [A2AMesh 当前设计文档索引](docs/specs/README.md)，包含 11 份当前版本化专项文档及 1 份开发实施计划；已被替代的 V1.0～V1.4 专项位于 [历史归档](docs/archive/README.md)，不参与当前实现合同。
 
 ## 最新架构
 
@@ -23,7 +23,7 @@
 - **EXTENDED OAuth：** 外部 Authorization Server + RFC 9728/RFC 8414 + client_credentials/JWKS，故障 fail closed；
 - **边界：** Gateway 不是 Mesh Leader 或固定调度主节点，V1 不建设 tenant/RBAC；服务重启 RTO 15 分钟，整机恢复 RTO 4 小时。
 
-当前 Mermaid 拓扑和完整 ADR 见 [业务与总体架构设计 V1.4](docs/specs/A2AMesh_业务与总体架构设计_V1.4.md)。
+当前 Mermaid 拓扑和完整 ADR 见 [业务与总体架构设计 V1.5](docs/specs/A2AMesh_业务与总体架构设计_V1.5.md)。
 
 ## 快速开始
 
