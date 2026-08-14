@@ -1,7 +1,12 @@
-# A2AMesh 设计文档（完整版）
+# A2AMesh 设计文档（主文档）
 
-> 对称 A2A Agent Mesh：多台异构机器的 AI Agent（Hermes / Codex / OpenCode / Claude Code）经公网 NATS 注册中心互联，任意 agent 调度任意 agent，全程 A2A 语义，NAT 友好（零隧道、零入站）。
-> 本文档完整自包含，可直接作为实现规范。
+> **v2 协议与状态层以 [A2A v1.0 + Redis 状态平面设计](A2A_V1_REDIS_DESIGN.md) 为准。**
+> 当前代码仍是简化对象 + 私有 NATS RPC 原型，尚未通过官方 A2A SDK 黑盒测试；本文件下方部分 v0.1 代码片段仅保留为实现历史，不得据此宣称标准兼容。
+>
+> 目标基线：A2A Specification release v1.0.1（线上协议值 `1.0`）+ 标准 Agent Card + JSON-RPC/HTTPS/SSE + 完整核心操作；NATS 是内部自定义 Binding，Redis 是私有共享状态平面。
+
+> 目标：多台异构机器的 AI Agent 经公网基础设施互联，任意 agent 调度任意 agent；外部提供标准 A2A v1.0，内部通过 NATS 自定义 Binding 实现 NAT 友好的零入站调用。
+> 主文档描述项目全貌；协议、Redis 状态和兼容门禁由上方链接的 v2 文档覆盖旧章节。
 
 ## 目录
 
@@ -33,10 +38,10 @@
 
 ## 1. 概述
 
-**A2AMesh** = 一个公网 NATS 注册中心 + 一群对称 peer agent + A2A 协议 + JSON Schema 契约 + 多运行时 + 工具生态 + 编排器 + 网关/UI。
+**A2AMesh** = 一台公网基础设施机（A2A Gateway + NATS/JetStream + State Service/Redis）+ 一群对称 peer agent + A2A v1.0 标准协议边界 + 多运行时 + 工具生态 + 编排器。
 
 - 实现语言：Python 3.11+（`nats-py` / `pydantic` / `fastapi`）；前端 Vue3
-- 唯一公网组件：NATS Server
+- 唯一公网机器：Linux；对外仅暴露 A2A HTTPS 与 NATS TLS/WSS，Redis 只绑定 loopback/容器私网
 - 每个 agent：纯 Python 进程，Windows/Linux 原生（无 WSL、无 Docker）
 
 ---
@@ -83,9 +88,9 @@ mesh call win2 "执行 dir 并报告"   # 调度 win2
 
 | # | 需求 |
 |---|------|
-| R1 | 唯一公网组件 = 注册中心，纯基础设施 |
+| R1 | 唯一公网机器 = Linux；A2A HTTPS + NATS 可达，Redis 不暴露公网 |
 | R2 | 对称 peer：任意 agent 可调度任意 agent |
-| R3 | 全 A2A 语义（message/send、message/stream、tasks/get、tasks/cancel、流式） |
+| R3 | 完整 A2A v1.0：标准 Agent Card、11 个核心操作、官方对象、JSON-RPC/SSE 与一致性测试 |
 | R4 | NAT 友好：只出网，零入站 |
 | R5 | 多运行时（Hermes/Codex/OpenCode/Claude Code） |
 | R6 | 跨平台（Linux 原生 + Windows 原生） |
@@ -97,12 +102,20 @@ mesh call win2 "执行 dir 并报告"   # 调度 win2
 ## 5. 总体架构
 
 ```
-NATS Server（公网：注册 + RPC + 流式 + JetStream KV/ObjectStore）
-  ▲ 出网连入 × N
-Agent A / B / C（对称 peer：serve + dispatch + discover + executor + tools）
-  ├ Orchestrator（可选 peer 角色）
-  └ Gateway + Ingress + UI（公网机，FastAPI + Vue3）
+Official A2A Client ─HTTPS/JSON-RPC/SSE─▶ A2A Gateway（标准 Agent Card + v1.0）
+                                               │ canonical operations
+                           ┌───────────────────┴───────────────────┐
+                           ▼                                       ▼
+                 State Service ─▶ Redis                    NATS + JetStream
+                 cards/tasks/index/lease                   RPC/events/replay
+                                                                 ▲
+                                                      出网连入 × N │
+                                           Agent A / B / C（对称 peer）
 ```
+
+Redis 与 NATS 的详细边界、Key Schema、Lua 原子操作、Agent Card 和完整兼容门禁见 [v2 设计](A2A_V1_REDIS_DESIGN.md)。
+
+![A2AMesh v2：A2A v1.0 + Redis + NATS](A2A_V1_REDIS_ARCHITECTURE.png)
 
 分层与单向依赖：
 
@@ -163,7 +176,8 @@ dependencies = [
   "nats-py>=2.6.0",
   "pydantic>=2.6.0",
   "jsonschema>=4.21.0",
-  "a2a-sdk>=0.1.0",
+  "a2a-sdk[http-server,signing,telemetry]==1.1.2",
+  "redis[hiredis]==8.1.0",
   "fastapi>=0.110.0",
   "uvicorn[standard]>=0.29.0",
   "aiofiles>=23.0.0",
@@ -246,7 +260,9 @@ A2AMESH_AGENT_NAME=win1
 
 ---
 
-## 8. 协议层
+## 8. 协议层（当前私有 v0.1；目标以 v2 文档为准）
+
+> 本节展示的是现有私有 NATS 原型，不是 A2A v1.0 规范接口。目标方法必须改为 `SendMessage`、`SendStreamingMessage`、`GetTask`、`ListTasks`、`CancelTask`、`SubscribeToTask`、Push Config CRUD 与 `GetExtendedAgentCard`；标准对象直接使用官方 SDK/Proto。
 
 ### 8.1 Subject
 
@@ -279,7 +295,9 @@ A2AMESH_AGENT_NAME=win1
 
 错误码：`-32601` 方法不存在、`-32602` 参数无效、`-32000` 运行时/工具不可用、`-32001` 超时、`-32002` 取消、`-32003` 权限不足。
 
-### 8.4 流式事件（A2A 标准，NATS 与 SSE 同一对象）
+### 8.4 流式事件（当前自定义事件，非 A2A v1 标准）
+
+> `task-id`、`message-update` 和 `final` 不是 v1 标准 `StreamResponse`。目标流式设计见 v2 文档 §9。
 
 | SSE event | JSON 数据 |
 |---|---|
@@ -341,7 +359,9 @@ A2AMESH_AGENT_NAME=win1
     "artifacts": { "type": "array", "items": { "$ref": "artifact.json" } } } }
 ```
 
-### 9.5 agent-card.json
+### 9.5 agent-card.json（当前内部简化卡，不是官方 v1 Agent Card）
+
+> 目标模型必须包含 `supportedInterfaces`、`version`、`capabilities`、`securitySchemes`、`securityRequirements`、默认输入/输出模式、完整 skills 与可选 signatures，并由官方 Proto/SDK 生成。
 
 ```json
 { "$id": "https://a2amesh.dev/schemas/agent-card.json",
@@ -998,14 +1018,14 @@ app = FastAPI()
 @app.websocket("/ws")                         # 推送 agent 上下线 + 任务状态
 ```
 
-### 16.2 gateway/a2a_http.py（标准 A2A ingress）
+### 16.2 gateway/a2a_http.py（目标标准 A2A ingress；当前未实现）
 
 ```python
-@app.post("/")                                # JSON-RPC -> 翻译成 a2a.rpc.<target> / orchestrator
-@app.get("/.well-known/agent.json")           # ingress AgentCard（skills = 所有 mesh agent）
+@app.post("/a2a/v1")                          # A2A v1 JSON-RPC + A2A-Version: 1.0
+@app.get("/.well-known/agent-card.json")      # 标准公共 Agent Card
 ```
 
-Ingress 翻译：HTTP JSON-RPC → 校验 rpc.json → 按 `params.metadata.target` 路由到 `a2a.rpc.<target>`（无 target 转发 orchestrator）→ 结果回 HTTP；流式订阅 `a2a.stream.*` 转 SSE。
+Ingress 不做字符串透传：使用官方 SDK/Proto 解析 A2A v1 请求，按 AgentInterface.tenant 路由，通过 application core 映射到内部 NATS Binding，再将标准 Task/Message/StreamResponse/Error 序列化回 HTTP/SSE。完整 11 操作、版本协商和 Redis 状态流程见 v2 文档。
 
 ### 16.3 UI（Vue3 五视图）
 
@@ -1143,7 +1163,7 @@ nssm start A2AMeshAgent
 | 编排 | Orchestrator + LLM DAG | Orchestrator + 确定性 Workflows |
 | 网关/UI | HTTP A2A + REST + WS + Vue3 | 内置多网关（含 Slack/Teams） |
 | 工具 | builtin/custom/runtime/mcp | 内置 + Python + MCP |
-| 流式 | A2A 标准事件 100% 兼容 | 原生 A2A |
+| 流式 | 目标：通过官方 SDK 验证 A2A v1 StreamResponse；当前仅私有事件 | 原生 A2A |
 | 会话/记忆 | 三层 KV + 运行时续聊 | ADK session/memory |
 | JSON Schema 契约 | ✅ | ❌ |
 | Windows | 原生 | 需 WSL |

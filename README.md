@@ -1,6 +1,8 @@
 # A2AMesh
 
-对称 A2A Agent Mesh：多台异构机器的 AI Agent（Hermes / Codex / OpenCode / Claude Code）经公网 NATS 注册中心互联，任意 agent 调度任意 agent，全程 A2A 语义，NAT 友好。
+对称 Agent Mesh：多台异构机器的 AI Agent（Hermes / Codex / OpenCode / Claude Code）经公网 NATS 互联，任意 agent 可调度任意 agent，NAT 友好。
+
+> **兼容性状态：** 当前代码是 A2A-inspired 的私有 NATS RPC 原型，尚未通过官方 A2A SDK 黑盒验证。目标是完整实现 A2A v1.0 标准 Agent Card、核心操作和 JSON-RPC/SSE；详见 [A2A v1.0 + Redis 状态平面设计](docs/A2A_V1_REDIS_DESIGN.md)。
 
 完整设计见 [docs/DESIGN.md](docs/DESIGN.md)。
 
