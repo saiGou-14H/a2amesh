@@ -28,14 +28,14 @@
 
 | 序号 | 文档 | 主要约束 |
 |---:|---|---|
-| 1 | 业务与总体架构设计 V1.0 | 定位、边界、拓扑、范围、NFR |
-| 2 | Agent Card 与协议对象规范 V1.0 | 官方对象、Card、扩展、状态 |
-| 3 | A2A 协议与 NATS 集成适配设计 V1.0 | Subject、Envelope、11 操作、投递 |
-| 4 | Redis 状态平面与数据设计 V1.0 | Key、Lua、lease、幂等、保留 |
-| 5 | 任务生命周期与长任务运行时设计 V1.0 | Supervisor、进度、SSE、Push、恢复 |
-| 6 | 编排器、Runtime 与工具适配设计 V1.0 | Plan、Adapter、Tool、Workspace |
-| 7 | 接口请求与响应标准 V1.0 | Gateway、请求、错误、示例 |
-| 8 | 统计、审计与运行监控规则 V1.0 | 指标、日志、告警、保留 |
+| 1 | 业务与总体架构设计 V1.1 | 定位、对称性、虚拟路由、拓扑、范围、NFR |
+| 2 | Agent Card 与协议对象规范 V1.1 | 官方对象、每 Agent Card、Bearer、扩展、状态 |
+| 3 | A2A 协议与 NATS 集成适配设计 V1.1 | Subject、Envelope、Registry RPC、11 操作、投递 |
+| 4 | Redis 状态平面与数据设计 V1.1 | DATA、Agent 查询、Key、Lua、lease、幂等、保留 |
+| 5 | 任务生命周期与长任务运行时设计 V1.1 | EVT、Supervisor、进度、SSE、Push、恢复 |
+| 6 | 编排器、Runtime 与工具适配设计 V1.1 | Plan、Adapter、Tool、Workspace、TEST |
+| 7 | 接口请求与响应标准 V1.1 | Gateway、A2A-Extensions、Bearer、官方错误码 |
+| 8 | 统计、审计与运行监控规则 V1.1 | Registry/Gateway 指标、日志、告警、保留 |
 | 9 | 本实施计划 | 当前状态、顺序、交付和门禁 |
 
 ## 1.3 不作为实施依据
@@ -79,7 +79,9 @@ Python 源文件：37
 | Redis State Service | 缺失 | — | C2 实现 |
 | NATS v1 Binding | 缺失 | — | C3 实现 |
 | TaskSupervisor/Progress | 缺失 | — | C4 实现 |
-| JSON-RPC/SSE Gateway | 缺失 | — | C5 实现 |
+| A2A JSON-RPC/SSE Gateway | 缺失 | — | C5 实现 |
+| A2A gRPC Gateway | 缺失 | — | C5 实现，共用 Core/语义套件 |
+| MCP Client/Server Bridge | 部分 Client 原型、Server 缺失 | `tools/` | C6 按 MCP 2026-07-28 完成 |
 | Push Dispatcher/Observer | 缺失 | — | C6 实现 |
 | 生产监控/备份/真机门禁 | 缺失 | — | C6～C8 |
 
@@ -99,15 +101,16 @@ Python 源文件：37
 
 1. A2A v1.0.1 官方对象和固定 SDK。
 2. 11 个核心操作及统一 Application Core。
-3. Agent Card well-known、ETag、Progress/Runtime 扩展。
-4. Redis State Service、Task/Card/Context、List、幂等、lease、Push 配置。
+3. 每 Agent 通配子域名 Card/JSON-RPC、ETag、Bearer、Progress/Runtime Extension 与 `A2A-Extensions`。
+4. Redis State Service、Agent/Card upsert/get/list/search/heartbeat/unregister、Task/Context、幂等、lease、Push 配置。
 5. NATS v1 Binding、私有 inbox、JetStream 有序事件。
 6. TaskSupervisor、heartbeat、process tree cancel、恢复。
-7. JSON-RPC/SSE Gateway、A2A-Version。
+7. JSON-RPC/SSE 与 gRPC Gateway、A2A-Version/A2A-Extensions metadata。
 8. Push Dispatcher 和受控 Observer。
 9. 四类 Runtime Adapter 与 workspace/tool policy。
-10. 指标、审计、Trace、健康、告警、备份。
-11. Linux + 2 Windows 真机任意方向调用。
+10. MCP 2026-07-28 Client（stdio/Streamable HTTP）和 Server Bridge（tools/resources）。
+11. 指标、审计、Trace、健康、告警、备份。
+12. Linux + 2 Windows 真机任意方向调用。
 
 ## 3.2 V1 明确不实现
 
@@ -117,14 +120,13 @@ Python 源文件：37
 - 任意 shell 公开 Skill；
 - 自动重试未知副作用任务；
 - 原始 Chain-of-Thought；
-- gRPC（除非另立变更）；
 - 多 Mesh 联邦。
 
 ## 3.3 MVP 与生产 V1
 
 | 能力 | MVP | 生产 V1 |
 |---|---|---|
-| Gateway | 本地 HTTPS/测试凭据 | 正式证书、部署级认证、限流 |
+| Gateway | 本地 HTTPS/测试凭据 | 通配 DNS/证书、固定部署级 Bearer、限流 |
 | Redis | 单实例 AOF | 备份、恢复演练、监控 |
 | NATS | 单实例 JetStream | TLS/NKey/ACL/持久目录/备份 |
 | Runtime | Hermes + 1 个 Adapter | 四个 Adapter 固定版本 |
@@ -149,6 +151,7 @@ src/a2amesh/
 │       └── execution_progress.py
 ├── bindings/
 │   ├── jsonrpc_http.py
+│   ├── grpc_v1.py
 │   └── nats_v1.py
 ├── state/
 │   ├── client.py
@@ -166,6 +169,8 @@ src/a2amesh/
 │   ├── auth.py
 │   ├── routes.py
 │   ├── sse.py
+│   ├── grpc_server.py
+│   ├── mcp_server.py
 │   └── push_dispatcher.py
 ├── runtime/
 │   ├── agent.py
@@ -180,6 +185,16 @@ src/a2amesh/
 │   ├── rules.py
 │   └── policy.py
 ├── tools/
+│   └── mcp/
+│       ├── client.py
+│       ├── stdio.py
+│       ├── streamable_http.py
+│       └── registry.py
+├── mcp_bridge/
+│   ├── tools.py
+│   ├── resources.py
+│   ├── auth.py
+│   └── mapping.py
 ├── telemetry/
 │   ├── metrics.py
 │   ├── tracing.py
@@ -206,12 +221,15 @@ tests/
 ```toml
 [project.optional-dependencies]
 a2a = [
-  "a2a-sdk[http-server,signing,telemetry]==1.1.2",
+  "a2a-sdk[grpc,http-server,signing,telemetry]==1.1.2",
   "redis[hiredis]==8.1.0"
+]
+mcp = [
+  "mcp==2.0.0"
 ]
 ```
 
-继续使用固定版本 `nats-py`、Pydantic、pytest。HTTP server 优先复用官方 SDK 支持的框架/adapter；不要自行实现另一套 JSON-RPC parser。最终版本写入 lockfile。
+继续使用固定版本 `nats-py`、Pydantic、pytest。HTTP/gRPC server 优先复用官方 SDK `grpc` extra 的类型、stub 和 handler；不要自行实现另一套 JSON-RPC 或 Proto。MCP 规范固定 `2026-07-28`，Python SDK 固定 `2.0.0`；Server 使用 `mcp.server.mcpserver.MCPServer` 或低级 `mcp.server.lowlevel.Server`，不得导入已移除的 `mcp.server.fastmcp`。所有最终版本写入 lockfile。
 
 开发环境使用 `uv`；不使用系统 pip 混装。
 
@@ -437,11 +455,11 @@ tests/integration/test_long_task_*.py
 
 ---
 
-# 12. C5：标准 A2A Gateway
+# 12. C5：标准 A2A JSON-RPC/gRPC Gateway
 
 ## 12.1 目标
 
-用官方 SDK 暴露 well-known Card、JSON-RPC、SSE 和 A2A-Version。
+用官方 SDK/Proto 暴露 well-known Card、JSON-RPC、SSE、gRPC 和 A2A service parameters/metadata。
 
 ## 12.2 文件
 
@@ -451,29 +469,36 @@ gateway/routes.py
 gateway/sse.py
 gateway/auth.py
 bindings/jsonrpc_http.py
+bindings/grpc_v1.py
+gateway/grpc_server.py
 tests/conformance/test_official_client_*.py
+tests/conformance/test_official_grpc_*.py
 ```
 
 ## 12.3 任务
 
 1. 官方 Server Adapter 最小启动。
-2. `/.well-known/agent-card.json`、ETag/304。
+2. `https://<agentId>.agents.<baseDomain>/.well-known/agent-card.json`、Host 校验、ETag/304。
 3. JSON-RPC 11 方法接 Core。
-4. `A2A-Version: 1.0` 和 VersionNotSupported。
+4. `A2A-Version: 1.0`、`A2A-Extensions` 和 `VersionNotSupportedError/-32009`。
 5. SendStreaming/Subscribe SSE。
 6. SSE comment keepalive、慢客户端上限。
 7. Get/List/Cancel。
-8. 部署级 Bearer/mTLS 可配置；不建设 RBAC。
-9. 官方 SDK 独立虚拟环境黑盒。
-10. 关闭旧协议默认入口。
+8. 固定 `meshBearer` 部署级认证、轮换双 key 窗口；不建设 RBAC。
+9. 九个 A2A Error 的全名、-32001～-32009 与 HTTP 映射测试。
+10. Gateway 非主节点：Peer 东西向调用旁路测试。
+11. 官方 `A2AService` 11 个 RPC，两个 server-streaming，metadata/deadline/cancel。
+12. JSON-RPC/gRPC/NATS 共用 operation fixture、状态机、错误和幂等套件。
+13. 官方 SDK/stub 独立虚拟环境黑盒。
+14. 关闭旧协议默认入口。
 
 ## 12.4 退出门禁
 
-官方 client 可执行 send/get/list/cancel/stream/subscribe；Card 只声明通过的接口。此时才可称 JSON-RPC A2A v1 compatible。
+官方 JSON-RPC client 与 gRPC stub 均可执行 11 个操作；Card 只声明通过的 interface。仅对应 Binding 门禁通过后，才能分别声明 JSON-RPC/gRPC A2A v1 compatible。
 
 ---
 
-# 13. C6：Push、Observer、Card 增强与可观测
+# 13. C6：MCP、Push、Observer、Card 增强与可观测
 
 ## 13.1 任务
 
@@ -486,6 +511,9 @@ tests/conformance/test_official_client_*.py
 7. Extended Card（若启用）与 JWS 签名。
 8. Metrics、Audit、Trace、Health、Alerts。
 9. 运行看板和 P1 Runbook。
+10. MCP Client：stdio/Streamable HTTP、initialize、tools/resources/prompts、schema/cache/cancel。
+11. MCP Server Bridge：`/mcp`、tools/resources、A2A Task handle 映射。
+12. MCP OAuth 2.1 Protected Resource Metadata、Origin、audience/resource、旧 HTTP+SSE 拒绝。
 
 ## 13.2 退出门禁
 
@@ -495,8 +523,9 @@ tests/conformance/test_official_client_*.py
 - Observer 不处理普通 heartbeat、不自触发；
 - 日志 secret/思维链扫描通过；
 - Card 签名篡改失败（若声明）。
+- MCP stdio/Streamable HTTP 与 OAuth/Origin/Task handle 黑盒通过；Windows 无 MCP 入站。
 
-完成 C6 后达到本项目定义的完整 A2A 功能覆盖。
+完成 C6 后达到本项目定义的 A2A JSON-RPC/gRPC 与 MCP 功能覆盖；兼容声明仍以 C8 真机和独立黑盒证据为准。
 
 ---
 
@@ -506,7 +535,7 @@ tests/conformance/test_official_client_*.py
 
 - NATS TLS/NKey/ACL/JetStream 持久目录；
 - Redis loopback/ACL/AOF/noeviction；
-- Gateway HTTPS；
+- Gateway HTTPS/HTTP2（JSON-RPC、gRPC、MCP Streamable HTTP）；
 - State/Gateway/Peer systemd 或容器；
 - 日志轮转、磁盘告警、备份；
 - firewall 只开放 HTTPS 和 NATS TLS/WSS；
@@ -733,8 +762,8 @@ Redis URL、Bearer、Webhook encryption key、NKey seed 不进入 YAML/Git。
 | 状态/后端 | C2、Lua、Projector、List/Push state |
 | NATS/网络 | C3、ACL、JetStream、NAT 真机 |
 | Runtime | C4、Adapter、Supervisor、Windows process |
-| Gateway | C5、JSON-RPC/SSE/Auth |
-| 可观测/安全 | C6/C7、Push、Observer、监控、SSRF、备份 |
+| Gateway | C5、JSON-RPC/SSE/gRPC/Auth |
+| MCP/可观测/安全 | C6/C7、MCP、Push、Observer、监控、OAuth、SSRF、备份 |
 | 测试 | conformance、故障注入、三机矩阵 |
 
 一人可兼任，但每个退出门禁需独立复核。
@@ -769,8 +798,8 @@ Redis URL、Bearer、Webhook encryption key、NKey seed 不进入 YAML/Git。
 | C2 Redis State | 未开始 | — |
 | C3 NATS v1 | 未开始 | 现有私有 NATS 仅作输入 |
 | C4 Long Task | 未开始 | 现有 stdout stream 为部分实现 |
-| C5 Gateway | 未开始 | — |
-| C6 Push/Observer/Telemetry | 未开始 | — |
+| C5 JSON-RPC/gRPC Gateway | 未开始 | — |
+| C6 MCP/Push/Observer/Telemetry | 未开始 | — |
 | C7 Deployment Hardening | 未开始 | — |
 | C8 Real Machines/Release | 未开始 | — |
 
@@ -782,11 +811,11 @@ Redis URL、Bearer、Webhook encryption key、NKey seed 不进入 YAML/Git。
 
 - 八份版本化专项文档及本实施计划完成评审；
 - 所有 BR/NFR 有对应实现和 TEST；
-- 官方 SDK 黑盒通过；
+- 官方 JSON-RPC SDK、gRPC stub 和 MCP 2026-07-28 client 黑盒通过；
 - 每个 Card interface 通过同一语义套件；
 - Redis/NATS/Peer/Gateway/Runtime 故障注入通过；
 - 长任务心跳、断线、取消、恢复通过；
-- Push/Observer/Tool 安全门禁通过；
+- MCP/Push/Observer/Tool 安全门禁通过；
 - Linux + 2 Windows 任意方向调用通过；
 - 监控、审计、告警、备份、Runbook 完整；
 - 无高危未决缺陷；
