@@ -381,10 +381,16 @@ rollout state只允许`PREPARING→MAINTENANCE→ACTIVATED→COMPLETED`；active
 
 | Key | 类型 | 内容 | TTL/清理 |
 |---|---|---|---|
-| `...:recon:case:<caseId>` | HASH | taskId,effectIntentId,effectAttemptId,attempt,workflowState,escalated,priority,currentResolutionId,revision,claimOwnerHash,claimExpiresMs,claimFencingToken,claimGeneration,timestamps | 至少 365 天/归档 |
+| `...:recon:case:<caseId>` | HASH | taskId,effectIntentId,effectAttemptId,attempt,workflowState,escalated,priority,currentResolutionId,revision,claimOwnerHash,claimOwnerInstanceId,claimExpiresMs,claimFencingToken,claimGeneration,claimSlaCycle,claimSlaDueMs,claimedInCurrentOpenCycle,timestamps | 至少 365 天/归档 |
 | `...:recon:effect-attempt:<effectAttemptId>` | STRING | 唯一 active caseId | 与 case 同周期 |
 | `...:recon:cases:workflow:<workflowState>` | ZSET | member=caseId, score=updatedMs | workflow 迁移原子维护 |
 | `...:recon:cases:escalated` | ZSET | member=caseId, score=escalatedMs | escalation 改变时原子维护 |
+| `...:recon:claim-fence:<caseId>` | STRING counter | 单调claim/tombstone fencing token，永不回退或复用 | 无物理TTL；与case tombstone同周期 |
+| `...:recon:due` | ZSET | member=`CLAIM_EXPIRE:<caseId>`或`ESCALATE:<caseId>`，score=对应server dueMs | writer同CAS插入/重排/移除；只作候选索引 |
+| `...:recon:scanner-lease` | HASH | scannerLeaseId,ownerInstanceId,scannerFencingToken,revision,leaseUntilMs | 逻辑TTL；接管保留更高fence |
+| `...:recon:scanner-fence` | STRING counter | 单调scanner fencing token | 无物理TTL |
+| `...:recon:due-scan:<scanOperationId>` | HASH | operation,requestDigest,scannerLeaseId,scannerFencingToken,candidatesJson,resultJson,resultDigest,createdMs | 与case最长保留期一致；同ID exact replay |
+| `...:recon:claim-operation:<claimOperationId>` | HASH | operation,caseId,idempotencyScope,idempotencyKeyHash,requestDigest,resultJson,resultDigest,createdMs | 与case同周期；首次业务CAS同原子写 |
 | `...:recon:evidence:<evidenceId>` | HASH | caseId,type,source,result,payloadSha256,canonicalSourceJson,sourceVersion,sourceDigest,visibility,refCommitId,artifactId,collectorHash,timestamps | append-only；VISIBLE只在typed source commit CAS后出现 |
 | `...:recon:case:<caseId>:evidence` | ZSET | member=evidenceId, score=collectedMs | 与 case 同周期 |
 | `...:recon:resolution:<resolutionId>` | HASH | immutable ResolutionRecord fields + recordDigest | 至少 365 天/归档 |
@@ -724,14 +730,19 @@ State Service内置唯一`Admission Scheduler`循环，不是任意Dispatch Work
 - 回滚也是更高 generation 的普通激活，禁止 active pointer 降序；
 - Credential/Alias/Grant/Card publisher/Artifact/Runtime/Tool policy 不得跨 generation 混合写入。
 
-### 6.13 `claim_reconciliation_case` / `append_reconciliation_evidence` / `resolve_reconciliation_case` / `close_reconciliation_case` / `reopen_reconciliation_case`
+### 6.13 `acquire_reconciliation_claim` / `renew_reconciliation_claim` / `release_reconciliation_claim` / `expire_reconciliation_claim` / `escalate_reconciliation_case` / `scan_reconciliation_due` / evidence与resolution writers
 
-- claim 原子校验 case revision，发放单调 fencing token 和默认 10 分钟 lease；
+- NATS `recon.claim`只接受Reconciliation §5 exact `ReconciliationClaimControlRequestV1`并按closed operation映射五个具名writer；`recon.scan-due`只接受exact `ReconciliationDueScanRequestV1`并映射scanner acquire/renew/scan。State ingress先校验signed recon NKey/AuthProof/replay、closed字段/reasonCode/operationId/requestDigest，Redis Function只接收已验证actorPrincipalHash和server time；
+- `scan_reconciliation_due`的ACQUIRE_SCANNER在无未过期lease时从scanner-fence取得更高token并创建lease；RENEW_SCANNER只接受current owner/fence/revision且未过期；SCAN_DUE只读取`recon:due`中score<=serverNowMs的最多limit项，在返回前逐项读取case并固化observed tuple、deterministic dueOperationId和32字节随机candidateToken到due-scan ledger。ZSET不是事实：漂移项由同CAS清理且不进入candidates；同scanOperationId/digest逐字节返回相同candidate bytes。接管只发更高scanner fence，旧scanner的scan及EXPIRE/ESCALATE全部拒绝；
+- `acquire_reconciliation_claim`要求OPEN/revision匹配且无未过期owner；无owner时直接从claim-fence发更高token，旧owner逻辑过期时同CAS先产生ClaimExpired再发新token。两者都写owner/instance/lease、claimedInCurrentOpenCycle=true、重排CLAIM_EXPIRE due、移除本cycle ESCALATE due并只令case revision+1；`renew_reconciliation_claim`要求current Principal/instance/token/revision且未过期，发更高token并重排due；`release_reconciliation_claim`要求current且未过期，发更高tombstone token、清owner/expiry并移除due，不改workflow/escalation；
+- `expire_reconciliation_claim`与`escalate_reconciliation_case`还必须校验current scanner lease/fence、持久scan candidate token及observed tuple。EXPIRE要求serverNow>=current observed expiry，发更高claim tombstone、清owner/expiry/expire due；ESCALATE要求OPEN、current cycle从未claim、未escalated且serverNow>=current SLA due，只提高priority/escalated并移除escalate due。二者revision+1且分别只写一次稳定audit/outbox；
+- create case与reopen必须同CAS递增claimSlaCycle、设置claimedInCurrentOpenCycle=false/claimSlaDueMs并插入ESCALATE due；首次ACQUIRE移除该due且release/expiry不重新插入。resolve/close/reopen清除claim expiry due并从claim-fence推进tombstone，任何evidence/resolve即使scanner未处理也必须以serverNow拒绝逻辑过期token；
+- 五个claim writer都在同一CAS写case/counter/due、`claim-operation` exact result、audit/outbox；scanner lease/scan也各自写持久operation result。相同operationId/scope/requestDigest逐字节返回原result且不增加revision/token/audit，异digest、旧revision/fence/candidate tuple零写入；
 - `append_reconciliation_evidence`必须把完整canonical EvidenceRecord、`sourceVersion/sourceDigest`和完整typed ref集合一次提交给`commit_typed_source_and_refs`；Redis Function先验证case/revision/claim，再同CAS写evidence VISIBLE、`artifact:<id>:refs`、`artifact:ref-source:EVIDENCE:<evidenceId>`、case evidence index、retention lock、source-commit ledger、case revision和audit/outbox。只带artifactId而未带canonical source/ref集合、或先让Evidence VISIBLE再补ref，均拒绝；Function提交前crash保持Evidence不可见，提交后crash不产生缺ref；
-- 旧 revision、旧 fencing、重复 idempotency key 不同 payload 均冲突；
-- `resolve` 创建 immutable ResolutionRecord 并按 case revision 只追加一次，OPEN→RESOLVED，设置 currentResolutionId、清 claim、递增 claimGeneration/revision，保留 escalation；
+- 旧 revision、逻辑过期/旧 fencing、重复 idempotency key不同payload均冲突；
+- `resolve` 创建 immutable ResolutionRecord 并按 case revision 只追加一次，OPEN→RESOLVED，设置 currentResolutionId、清 claim/due、从counter推进claim tombstone并递增 claimGeneration/revision，保留 escalation；
 - `close` 只允许 RESOLVED→CLOSED、无 active claim，按 policy 校验独立 reviewer，保留 current/history，不创建新 resolution；
-- `reopen` 只允许 RESOLVED/CLOSED→OPEN，要求新 evidence/reason，清 current/claim、递增 claimGeneration/revision，保留 history/escalation；
+- `reopen` 只允许 RESOLVED/CLOSED→OPEN，要求新 evidence/reason，清 current/claim、推进claim tombstone、递增claimGeneration/claimSlaCycle/revision、设置新SLA due并插入ESCALATE member，保留 history/escalation；
 - 三个操作先检查 `caseId+Idempotency-Key` requestDigest；相同返回原 resultRef，异同冲突，旧 claim fencing 永久失效。详细职责分离见《人工对账与运维操作设计》。
 
 ### 6.14 `claim_dispatch` / `mark_dispatch_sent` / `reclaim_expired_dispatch` / `accept_dispatch_and_start` / `expire_dispatch`

@@ -62,7 +62,8 @@
 | `resolutionHistory` | 按 case revision 排序的 append-only ResolutionRecord ID 历史，reopen/纠错不得覆盖 |
 | `reconciliationRequired` | 创建时为 true；由所有关联 case 聚合计算 |
 | `priority` | 默认 `P1`，策略可提高，不能由 caller 降低 |
-| `claimOwner/claimExpiresAt/claimFencingToken` | 活跃 claim 时存在 |
+| `claimOwnerHash/claimOwnerInstanceId/claimExpiresAt/claimFencingToken` | owner Principal只来自认证上下文；active claim时owner/expiry非null，fence保留最后tombstone值且永不回退 |
+| `claimSlaCycle/claimSlaDueAt/claimedInCurrentOpenCycle` | 每次create/reopen开启新cycle并持久调度15分钟未claim升级；首次ACQUIRE后本cycle永久标记已claim |
 | `evidenceIds` | 仅保存引用，证据正文 append-only |
 | `revision` | 每次状态变化 CAS 递增 |
 | `openedAt/escalatedAt/resolvedAt/closedAt` | 服务端 UTC 时间 |
@@ -82,7 +83,7 @@ RESOLVED/CLOSED ── new contradictory evidence + authorized reopening ──�
 
 规则：
 
-1. claim 是独立 lease 维度，不改变 workflowState；到期写 `ClaimExpired` 审计并清除 active claim，escalated/priority 保留。
+1. claim 是独立 lease 维度，不改变 workflowState；create/reopen同CAS插入`ESCALATE:<caseId>` due，ACQUIRE/RENEW插入或重排`CLAIM_EXPIRE:<caseId>` due。到期由§5显式scanner或迟到ACQUIRE的同CAS逻辑到期路径写 `ClaimExpired` 审计并清除 active claim，escalated/priority 保留。
 2. escalation 只更新 `escalated/priority/escalatedAt`，仍可被具备权限的操作员认领和解决。
 3. `RESOLVED` 表示 ledger 已完成原子裁决；`CLOSED` 表示二次核验/归档完成，不改变 resolutionHistory。
 4. reopen 必须提供新证据或指出原证据失效并增加 revision；旧 currentResolutionId 在初次 resolve 时已唯一追加到 history，reopen 只清空 currentResolutionId，不得重复追加或删除旧审计。
@@ -142,14 +143,33 @@ sourceVersion, sourceDigest, visibility, refCommitId, artifactId?, signature/key
 
 ---
 
-## 5. Claim lease
+## 5. Claim lease与持久控制面
 
-- 默认 lease 10 分钟，允许在到期前续约；每次取得/续约返回单调递增 fencing token。
-- 一个 case 同时只有一个 active claimant；其他操作员可读但不能 resolve。
-- resolve/evidence（需要保护的 provider 主动查询除外）必须携带最新 claim fencing token 和 case revision。
-- 失联后 lease 到期，其他操作员可认领；旧操作员提交被 409 拒绝。
-- 释放 claim 只清除 active owner，不删除操作历史或改变 workflowState/escalated。
-- 自动 evidence collector 使用服务机器身份，可追加证据但默认不能执行最终人工 resolution，除非某 provider adapter 的确定性自动裁决经过独立门禁并在配置中显式启用。
+`a2a.v1.state.recon.claim`只接受closed `ReconciliationClaimControlRequestV1`。common字段恰为`schemaVersion,operation,caseId,claimOperationId,idempotencyKey,requestDigest,expectedRevision,reasonCode,authProof`；`operation=ACQUIRE|RENEW|RELEASE|EXPIRE|ESCALATE`，未列variant字段必须absent：
+
+- `ACQUIRE`额外恰含`ownerInstanceId,leaseDurationMs`，reasonCode只能`OPERATOR_ACQUIRE`；
+- `RENEW`额外恰含`ownerInstanceId,expectedClaimFencingToken,leaseDurationMs`，reasonCode只能`OPERATOR_RENEW`；
+- `RELEASE`额外恰含`ownerInstanceId,expectedClaimFencingToken`，reasonCode只能`OPERATOR_RELEASE`；
+- `EXPIRE`额外恰含`scanOperationId,candidateToken,observedClaimOwnerHash,observedClaimFencingToken,observedClaimExpiresMs`，reasonCode固定`LEASE_EXPIRED`；
+- `ESCALATE`额外恰含`scanOperationId,candidateToken,observedEscalationDueMs`，reasonCode固定`UNCLAIMED_SLA_BREACH`。
+
+operator幂等scope的exact bytes为`UTF8(caseId)+0x00+UTF8(operation)+0x00+UTF8(operatorPrincipalHash)+0x00+UTF8(Idempotency-Key)`，`idempotencyKeyHash=lowerhex(SHA-256(scopeBytes))`，`claimOperationId=lowerhex(SHA-256(UTF8("a2amesh-recon-claim-operation-v1")+0x00+scopeBytes))`。EXPIRE/ESCALATE的claimOperationId和Idempotency-Key都必须逐字节等于scanner candidate内确定性`dueOperationId`，其scope因此在scanner接管后不变。operator requestDigest是排除`requestDigest,authProof`后的完整request RFC8785 SHA-256；scanner业务requestDigest还排除临时`scanOperationId,candidateToken`，使接管scanner可用新token重放同一due operation。同operationId/scope/digest逐字节返回首次结果，异digest零写入。
+
+`ReconciliationClaimControlResultV1`字段恰为`schemaVersion,claimOperationId,operation,caseId,workflowState,revision,claimOwnerHash,claimOwnerInstanceId,claimFencingToken,claimExpiresAt,escalated,priority,resultCode,auditEventIds,resultDigest`；nullable owner/expiry显式null，auditEventIds按同CAS产生顺序排列，resultDigest为排除自身后RFC8785 SHA-256。
+
+唯一具名writer及CAS如下：
+
+1. `acquire_reconciliation_claim`要求OPEN、expectedRevision匹配且无未过期owner。若旧claim已按State server time逻辑过期，同一CAS先固化`ClaimExpired`再发新claim；整个复合迁移revision只+1但auditEventIds依次含expired/acquired。它从`claim-fence:<caseId>`取得更高token，写10分钟或policy lease、重排expire due，并令本OPEN cycle的`claimedInCurrentOpenCycle=true`且移除escalate due。
+2. `renew_reconciliation_claim`要求OPEN、Principal/instance/token/revision全等且尚未逻辑过期；每次从counter取得更高token、revision+1并重排expire due。旧token立即永久失效。
+3. `release_reconciliation_claim`要求current且未过期owner/token；从counter取得更高tombstone fence、清owner/expiry、移除expire due、revision+1，不改变workflow/escalated/priority且不重新插入本cycle escalation。
+4. `expire_reconciliation_claim`要求current scanner lease/fence、持久candidate tuple全等且`serverNowMs>=observedClaimExpiresMs=current claimExpiresMs`；从counter取得更高tombstone fence，清owner/expiry、移除expire due、revision+1并只写一次ClaimExpired audit/outbox。
+5. `escalate_reconciliation_case`要求current scanner lease/fence、OPEN、该cycle从未claim、未escalated、candidate revision/due全等且serverNow到期；只设置escalated/priority/escalatedAt、移除escalate due、revision+1，不改workflow/history/claim。
+
+`a2a.v1.state.recon.scan-due`只接受同一Reconciliation Service NKey的closed `ReconciliationDueScanRequestV1`，唯一State writer为`scan_reconciliation_due`。common字段恰为`schemaVersion,operation,scanOperationId,ownerInstanceId,idempotencyKey,requestDigest,authProof`；`ACQUIRE_SCANNER`额外恰含`leaseDurationMs`，`RENEW_SCANNER`额外恰含`scannerLeaseId,scannerFencingToken,expectedRevision,leaseDurationMs`，`SCAN_DUE`额外恰含`scannerLeaseId,scannerFencingToken,expectedRevision,limit`。State server time是唯一due判断；limit范围1..1000。scanner幂等scope bytes为`UTF8(operation)+0x00+UTF8(ownerInstanceId)+0x00+UTF8(Idempotency-Key)`，scanOperationId必须等于`lowerhex(SHA-256(UTF8("a2amesh-recon-due-scan-v1")+0x00+scopeBytes))`，requestDigest为排除自身/authProof后的完整request RFC8785 SHA-256。ACQUIRE生成32字节CSPRNG base64url无padding scannerLeaseId并从counter发新fence；RENEW保留leaseId。
+
+`ReconciliationDueScanResultV1`字段恰为`schemaVersion,scanOperationId,operation,scannerLeaseId,scannerFencingToken,revision,leaseExpiresAt,candidates,resultDigest`；每个candidate恰为`dueKind,caseId,observedRevision,observedClaimOwnerHash,observedClaimFencingToken,observedDueMs,dueOperationId,candidateToken`，ESCALATE项两个observed claim字段显式null。candidateToken为32字节CSPRNG base64url无padding并与scan result持久化。dueOperationId输入的observedRevision/observedDueMs/非nulltoken使用无前导零十进制ASCII，null token固定四字节ASCII`null`；exact公式为`lowerhex(SHA-256(UTF8("a2amesh-recon-due-operation-v1")+0x00+UTF8(dueKind)+0x00+UTF8(caseId)+0x00+ASCII(observedRevision)+0x00+ASCII(observedDueMs)+0x00+ASCII(tokenOrNull)))`。同scanOperationId/digest逐字节重放相同候选/token；双scanner只有current lease/fence可扫描或提交EXPIRE/ESCALATE，过期后ACQUIRE_SCANNER发更高fence接管。
+
+所有claim/due writer在同一Redis CAS写case、counter/due、operation exact result、audit/outbox；resolve/evidence即使scanner尚未运行也必须按server time拒绝逻辑过期token，resolve/close/reopen原子移除claim due并推进tombstone fence，reopen另启新claimSlaCycle/escalate due。自动 evidence collector使用服务机器身份可追加证据但默认不能执行最终人工resolution，除非确定性自动裁决经过独立门禁并在配置中显式启用。
 
 ---
 
@@ -199,13 +219,15 @@ sourceVersion, sourceDigest, visibility, refCommitId, artifactId?, signature/key
 | `GET` | `/ops/v1/reconciliation-cases` | `ops.reconciliation.read` |
 | `GET` | `/ops/v1/reconciliation-cases/{caseId}` | `ops.reconciliation.read` |
 | `POST` | `/ops/v1/reconciliation-cases/{caseId}/claims` | `ops.reconciliation.claim` |
+| `POST` | `/ops/v1/reconciliation-cases/{caseId}/claim-renewals` | `ops.reconciliation.claim` |
+| `POST` | `/ops/v1/reconciliation-cases/{caseId}/claim-releases` | `ops.reconciliation.claim` |
 | `POST` | `/ops/v1/reconciliation-cases/{caseId}/evidence` | `ops.reconciliation.evidence.write` |
 | `POST` | `/ops/v1/reconciliation-cases/{caseId}/resolutions` | `ops.reconciliation.resolve` |
 | `POST` | `/ops/v1/reconciliation-cases/{caseId}/closings` | `ops.reconciliation.close` |
 | `POST` | `/ops/v1/reconciliation-cases/{caseId}/reopenings` | `ops.reconciliation.reopen` |
 | `POST` | `/ops/v1/tasks/{taskId}/outbox-events/{eventId}/recoveries` | `ops.outbox.recover` |
 
-列表支持稳定cursor、`workflowState/escalated/priority/provider/age`过滤和确定排序，不允许按自由文本provider body搜索。reconciliation mutating请求必须携带`Idempotency-Key`、`expectedRevision`；claim之后的写操作还需`claimFencingToken`。
+列表支持稳定cursor、`workflowState/escalated/priority/provider/age`过滤和确定排序，不允许按自由文本provider body搜索。reconciliation mutating请求必须携带`Idempotency-Key`、`expectedRevision`；claim之后的写操作还需`claimFencingToken`。claim body恰为`expectedRevision,ownerInstanceId,leaseDurationMs,reasonCode`；renew body恰为`expectedRevision,ownerInstanceId,expectedClaimFencingToken,leaseDurationMs,reasonCode`；release body恰为`expectedRevision,ownerInstanceId,expectedClaimFencingToken,reasonCode`。owner Principal只取认证上下文且进入AuthProof/requestDigest，caller不得自报owner hash；API分别映射ACQUIRE/RENEW/RELEASE，EXPIRE/ESCALATE无公共HTTP入口。path caseId不得在body覆盖，同HTTP Idempotency-Key同body逐字节重放、异body 409。
 
 outbox recovery body恰含`expectedHeadSeq,expectedEventDigest,repairEvidenceUri,repairEvidenceSha256,reasonCode`并携带非空`Idempotency-Key` header；`reasonCode`只允许`RETRY_AFTER_BROKER_REPAIR|RETRY_AFTER_CONFIG_REPAIR|RETRY_AFTER_VERIFIED_REVIEW`，`taskId/eventId`只取path且`eventId`格式必须为`<taskId>:<expectedHeadSeq>`。API生成`RecoverDeadOutboxRequestV1`时把path字段、body、Idempotency-Key和自身AuthProof原样绑定，caller不能提供其他State subject、自选Principal或覆盖path字段。
 
@@ -218,7 +240,9 @@ Ops API先做相同预验证，再以独立`ops-recovery` NKey/AuthProof只调�
 ```text
 a2amesh ops reconcile list --state open
 a2amesh ops reconcile show <case-id>
-a2amesh ops reconcile claim <case-id>
+a2amesh ops reconcile claim <case-id> --expect-revision <n> --lease-ms <n> --idempotency-key <key>
+a2amesh ops reconcile claim renew <case-id> --fencing-token <n> --expect-revision <n> --lease-ms <n> --idempotency-key <key>
+a2amesh ops reconcile claim release <case-id> --fencing-token <n> --expect-revision <n> --idempotency-key <key>
 a2amesh ops reconcile evidence add <case-id> --file <signed-record>
 a2amesh ops reconcile resolve <case-id> --result applied --evidence <id>
 a2amesh ops reconcile close <case-id> --reason <code>
@@ -285,15 +309,15 @@ WORM 受限审计必须使用《统计、审计与运行监控规则》的 canon
 ## 12. 验收标准
 
 - **TEST-RECON-CASE-001**：每个 UNKNOWN effect 原子创建唯一 case，重复回调不重复建单。
-- **TEST-RECON-CLAIM-001**：并发 claim、续约、过期、旧 fencing token 和失联接管均确定一致。
+- **TEST-RECON-CLAIM-001**：用唯一closed wire覆盖ACQUIRE/RENEW/RELEASE/EXPIRE/ESCALATE；并发双claimant只有一个成功，每次renew发更高token，release/逻辑expiry/resolve/reopen推进tombstone fence。分别在case/due/result/audit/outbox CAS前后及commit-before-reply杀进程，同operation同digest逐字节重放且revision/token/audit只变化一次，异digest或旧owner/instance/token/revision零写入；旧token即使scanner延迟也不能evidence/resolve，失联后新operator可由lazy-expire ACQUIRE或scanner EXPIRE安全接管。
 - **TEST-RECON-EVIDENCE-001**：只有允许类型、完整digest/来源/时间的证据可用于resolution，自由文本不能单独裁决；Evidence canonical正文与typed ref/retention lock必须由同一`commit_typed_source_and_refs` CAS变为VISIBLE。分别在source canonical校验、ref校验、CAS前、CAS后、State/reply丢失、与Artifact DELETE/Reaper竞争点杀进程；任一点都不得出现VISIBLE Evidence+missing reverse/forward ref，旧sourceVersion/digest/Artifact version必须拒绝，重复commit逐字节重放且不重复case index/event/audit。
 - **TEST-RECON-RESOLVE-001**：APPLIED/FAILED/COMPENSATED 与 ledger、case、Task 聚合、audit、outbox 原子一致。
 - **TEST-RECON-IMMUTABLE-001**：已失败 Task 在任何 resolution/reopen 后仍保持原标准终态，只追加结果。
 - **TEST-RECON-IDEMP-001**：Idempotency-Key、revision 和 fencing 冲突不会产生重复 resolution/event。
 - **TEST-RECON-AUTHZ-001**：业务 Credential、旧 generation 和缺失细分 capability 均不能调用运维写接口。
-- **TEST-RECON-SLA-001**：5 分钟 P1、15 分钟升级、10 分钟 claim lease 和 backlog 告警可演练。
+- **TEST-RECON-SLA-001**：create/reopen同CAS插入ESCALATE due，首次claim永久移除本cycle升级；claim/renew重排10分钟expire due。双scanner中只有current lease/fence取得持久candidate/token；扫描响应丢失逐字节重放，接管后新token仍映射相同dueOperationId。15分钟未claim仅升级一次，EXPIRE/ESCALATE与ACQUIRE/resolve/reopen竞争只有一个CAS成功，失败路径revision/fence/due/audit/outbox全零变化。
 - **TEST-RECON-DR-001**：Case/Evidence/Audit 恢复后可与 effect ledger、Task 和 provider 证据重新对账。
-- **TEST-RECON-STATE-001**：workflowState、escalation、claim lease 三个正交维度不存在非法互相覆盖。
+- **TEST-RECON-STATE-001**：workflowState、escalation、claim lease三个正交维度不存在非法互相覆盖；逐项验证五个具名writer、server-time逻辑expiry、OPEN cycle、due tuple和closed reasonCode，EXPIRE不改escalation/workflow，ESCALATE不改claim/history，RELEASE不重启已claim cycle升级。
 - **TEST-RECON-REOPEN-HISTORY-001**：reopen 清 currentResolution 但 resolutionHistory/ledger/audit 不可变。
 - **TEST-EFFECT-STALE-001**：陈旧 APPLYING先写入持久stale-due；只有持有效scanner lease/fence的effect-reconciler可经`a2a.v1.state.effect.scan-stale`以scanOperationId认领。覆盖owner lease失效前后、scanner claim/UNKNOWN CAS前后、State/reply丢失、双scanner与重启；同ID同digest逐字节重放，异digest/错误Principal/错误staleAfter零写入，最终只产生一次UNKNOWN、一个case、一个告警outbox且不重复provider调用。
 
