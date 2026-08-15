@@ -162,7 +162,7 @@ V1 每套部署是一个独立 Mesh，通过 `mesh_id` 区分环境/实例，不
 | Public Gateway | `CORE` 提供标准 Agent Card、JSON-RPC/SSE、版本与 A2A Bearer入口；`INTEROP`追加gRPC/Push。transport adapter与Application Core library固定同一受信进程内typed调用，Gateway NKey不持有State权限 |
 | Identity Resolver | Gateway、NATS ingress、MCP Bridge 共用的入口逻辑；通过 State RPC 把 NKey/Bearer/OAuth 映射为 Canonical Principal，输出可信 AuthContext |
 | OAuth Authorization Server | `EXTENDED` 外部部署依赖，为 MCP machine client 签发 audience-bound Token；A2AMesh 不自行签发 |
-| Application Core | 11个操作、状态机、错误、幂等、路由；在Peer节点使用独立NKey/进程，通过NATS集成规范§16.9 Protected Local IPC接收Peer Binding请求；在Public Gateway部署单元作为同进程Core library接收typed adapter调用。两者均由Core NKey执行State RPC，不把Task mutation权限授予Peer或Gateway adapter |
+| Application Core | 11个操作、状态机、错误、幂等、路由；在Peer节点使用独立NKey/进程，通过NATS集成规范§16.9 Protected Local IPC接收Peer Binding请求；在Public Gateway部署单元作为同进程Core library接收typed adapter调用。Core内嵌Merge Broker模块，独占共享workspace root writer；Merge Broker不是独立部署组件，不拥有单独NKey、NATS subject或READY slot。两者均由Core NKey执行State RPC，不把Task mutation权限授予Peer或Gateway adapter |
 | State Service | 唯一 Redis 客户端，封装 Lua/索引/查询 |
 | Event Relay | 扫描 Redis outbox，把确定性事件发布到 JetStream，收到 PubAck 后标记完成 |
 | Stream Session Controller | 以 DATA-STREAM-SESSION-001 鉴权/恢复 NATS 流会话，读取 filtered consumer、持久化 frame watermark并代理 JS ACK；不生产权威 Task 事件 |

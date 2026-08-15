@@ -794,7 +794,7 @@ State Service内置唯一`Admission Scheduler`循环，不是任意Dispatch Work
 
 所有Step transition、create/retry child、aggregate/finalize business、workspace/effect派生操作都必须同时要求`state=RUNNING`且recoveryState=NONE；RECONCILING时只有renew、recover、reconcile、finalize-recovery可写，旧fencing永久拒绝。终态后只有query/audit/reconciliation投影可写，不得创建/重试child或迁移Step。
 
-`transition_step`只允许DATA-PLAN-001唯一枚举`PENDING/READY/DISPATCHED/RUNNING/SUCCEEDED/FAILED/CANCELED/SKIPPED`，并要求Plan `state=RUNNING`、recoveryState=NONE、当前plan owner lease/fencing+expected revision；Step childTaskId与root/child映射同CAS。workspace lease仅保护State/Merge Broker操作，不能fence Runtime对文件系统的直接写入；所有可写Runtime使用attempt私有worktree，只有Merge Broker同时校验`workspaceFencingToken/baseRevision/expectedDiffDigest/activeGeneration/policySnapshotHash`后原子合并共享根。
+`acquire_workspace_lease`只由State按workspace alias/Task lease/active generation/policy snapshot发放单调`workspaceFencingToken`并维护lease/fence；该token本身绝不授予Runtime、Tool、Task Supervisor或Peer Binding文件系统写权。共享根的唯一writer是Application Core内嵌Merge Broker：它只能由Core-owned受保护本地接口接收typed merge request，向State重新核验lease/fence后，以handle-relative路径同时校验`baseRevision,expectedDiffDigest,activeGeneration,policySnapshotHash`并在一个本地临界区产生唯一受审计commit；Core外部caller不能指定绝对路径、直接打开shared root、代签Core身份或把Redis lease当作已完成文件写。Merge request的精确frame、caller component、replay ledger、五元组CAS与crash时序由NATS §16.9/`TEST-WORKSPACE-FENCE-001`闭合。
 
 ### 6.17 `append_task_message` / `claim_input_delivery` / `ack_input_and_resume`
 

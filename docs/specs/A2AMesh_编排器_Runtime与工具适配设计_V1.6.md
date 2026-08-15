@@ -435,8 +435,8 @@ V1 不建设用户权限，但 workspace 仍需静态本地 allowlist。
 
 - 所有可写 Task/attempt **强制**使用独立 worktree/overlay/临时挂载；Runtime 永远不能直接写共享根；
 - Linux 通过预先打开的目录句柄与 `openat2(RESOLVE_BENEATH|RESOLVE_NO_SYMLINKS|RESOLVE_NO_MAGICLINKS)` 或等价 broker API 访问；Windows 使用 handle-relative/ACL/reparse-point 拒绝等价机制；仅 `realpath` 预检查不合格；
-- 共享 workspace lease/fencing 只授权 Merge Broker，不直接授权 Runtime 文件写入；仅本机私有非共享根仍使用 attempt 隔离；
-- Merge Broker 校验 `workspaceFencingToken + baseRevision + expectedDiffDigest + activeGeneration + policySnapshotHash` 后在临界区原子提交；旧进程只能污染自己的私有 attempt 目录；
+- 共享 workspace lease/fencing 只授权**Application Core内嵌的Merge Broker模块**，不直接授权Runtime文件写入；仅本机私有非共享根仍使用attempt隔离；Merge Broker不是独立component/NKey/READY或NATS subject；
+- Merge Broker校验 `workspaceFencingToken + baseRevision + expectedDiffDigest + activeGeneration + policySnapshotHash` 后在临界区原子提交；只有Core-owned、handle-relative writer可触碰shared root，Task Supervisor/Runtime/Tool/Peer Binding不得直接打开或写入共享根；旧进程只能污染自己的私有attempt目录；
 - 清理临时目录时校验 owner marker；
 - 不允许调用方指定任意本机路径。
 
