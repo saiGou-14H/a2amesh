@@ -1,0 +1,43 @@
+{
+  "a2aProtocolVersion": "1.0",
+  "authContext": {
+    "credentialId": "cli-buildbot",
+    "expiresAt": "2026-08-14T03:05:00Z",
+    "issuedAt": "2026-08-14T03:00:00Z",
+    "issuer": "a2amesh-gateway",
+    "method": "a2a-bearer",
+    "principalId": "a2a:cli-buildbot",
+    "subject": "cli-buildbot"
+  },
+  "authProof": {
+    "algorithm": "nkey-ed25519",
+    "signature": "fixture-base64url-signature",
+    "signer": "gateway-service-nkey-public"
+  },
+  "bindingSchemaVersion": "1.1",
+  "bindingUri": "https://a2amesh.dev/bindings/nats/v1",
+  "callerAgentId": "linux-gateway",
+  "callerInstanceId": "gateway-01",
+  "configGeneration": 42,
+  "deadlineAt": "2026-08-14T03:30:00Z",
+  "operation": "SendMessage",
+  "payload": {
+    "configuration": {
+      "returnImmediately": true
+    },
+    "message": {
+      "messageId": "msg-01H-fixture",
+      "parts": [
+        {
+          "text": "Run the repository tests."
+        }
+      ],
+      "role": "ROLE_USER"
+    }
+  },
+  "replySubject": "_INBOX.a2amesh.linux-gateway.random01",
+  "requestId": "req-01H-fixture",
+  "sentAt": "2026-08-14T03:00:00Z",
+  "streamOpenId": null,
+  "targetAgentId": "windows-a"
+}
