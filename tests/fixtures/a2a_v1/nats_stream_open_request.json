@@ -1,0 +1,10 @@
+{
+  "callerInstanceId": "gateway-01",
+  "configGeneration": 42,
+  "expiresAt": "2026-08-14T03:30:00.000Z",
+  "operation": "SendStreamingMessage",
+  "requestDigest": "cd6ce9a1f01f367c8ef658b2e4e94d3e7897f81893e95174f3d1316a40afbfef",
+  "schemaVersion": "1.0",
+  "streamOpenId": "stream-open-01H-control",
+  "taskId": "task-01H-control"
+}

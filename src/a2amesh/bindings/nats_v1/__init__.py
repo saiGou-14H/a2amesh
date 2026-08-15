@@ -24,6 +24,16 @@ from .stream import (
     StreamSessionFrameV1,
     StreamSessionOpenedV1,
 )
+from .stream_control import (
+    StreamAckRequestV1,
+    StreamCloseRequestV1,
+    StreamControlKind,
+    StreamControlResultV1,
+    StreamOpenDigestContextV1,
+    StreamOpenRequestV1,
+    StreamSessionState,
+    compute_stream_open_request_digest,
+)
 
 __all__ = [
     "A2A_PROTOCOL_VERSION",
@@ -38,11 +48,19 @@ __all__ = [
     "BindingResponseEnvelope",
     "BindingValidationError",
     "RequestReplayGuard",
+    "StreamAckRequestV1",
+    "StreamCloseRequestV1",
+    "StreamControlKind",
+    "StreamControlResultV1",
     "StreamFrameCursorV1",
     "StreamFrameDisposition",
+    "StreamOpenDigestContextV1",
+    "StreamOpenRequestV1",
     "StreamSessionFrameV1",
     "StreamSessionOpenedV1",
+    "StreamSessionState",
     "VerifiedBindingIdentity",
     "canonical_signing_bytes",
+    "compute_stream_open_request_digest",
     "sign_request_envelope",
 ]

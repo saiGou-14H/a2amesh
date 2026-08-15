@@ -1,0 +1,27 @@
+{
+  "canonicalization": "RFC8785",
+  "digestContext": {
+    "callerScope": "caller01",
+    "consumerConfigDigest": "2222222222222222222222222222222222222222222222222222222222222222",
+    "responseCorePrincipalHash": "1111111111111111111111111111111111111111111111111111111111111111"
+  },
+  "fixtures": {
+    "ack": {
+      "canonicalLength": 213,
+      "sha256": "cbf7d6a4758ff9eee6c972e984aaf6ddc5bc9de48b0a2ae297ea2191b0c1b8ce"
+    },
+    "close": {
+      "canonicalLength": 132,
+      "sha256": "eba2d7c05295d89ee3f03106f6ab22953cf72123aa483c8bd9f110c59dc0c411"
+    },
+    "open": {
+      "canonicalLength": 303,
+      "requestDigest": "cd6ce9a1f01f367c8ef658b2e4e94d3e7897f81893e95174f3d1316a40afbfef",
+      "sha256": "083843aeed74f217f02b55726337a09855f4f8521f0957bc5eac1993048e7ef7"
+    },
+    "result": {
+      "canonicalLength": 41,
+      "sha256": "7a2ae20caf86bb33cc863efdb0daed1f6f7621aa2bcdd4495948e5bbca423f7f"
+    }
+  }
+}

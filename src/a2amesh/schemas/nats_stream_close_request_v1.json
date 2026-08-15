@@ -1,0 +1,18 @@
+{
+  "$id": "https://a2amesh.dev/schemas/nats-stream-close-request-v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "streamSessionId",
+    "streamOpenId",
+    "reason"
+  ],
+  "properties": {
+    "schemaVersion": {"const": "1.0"},
+    "streamSessionId": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,128}$"},
+    "streamOpenId": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,128}$"},
+    "reason": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]{0,63}$"}
+  }
+}

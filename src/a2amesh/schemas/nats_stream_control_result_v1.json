@@ -1,0 +1,21 @@
+{
+  "$id": "https://a2amesh.dev/schemas/nats-stream-control-result-v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["accepted", "currentState"],
+  "properties": {
+    "accepted": {"type": "boolean"},
+    "currentState": {
+      "enum": [
+        "OPENING",
+        "ACTIVE",
+        "DRAINING_FINAL",
+        "CLOSING",
+        "CLOSED",
+        "EXPIRING",
+        "EXPIRED"
+      ]
+    }
+  }
+}
