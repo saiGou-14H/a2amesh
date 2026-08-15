@@ -42,6 +42,7 @@ name = "a2amesh"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "a2a-sdk" },
     { name = "jsonschema" },
     { name = "nats-py" },
     { name = "nkeys" },
@@ -72,6 +73,7 @@ test = [
 
 [package.metadata]
 requires-dist = [
+    { name = "a2a-sdk", specifier = "==1.1.2" },
     { name = "a2a-sdk", extras = ["grpc", "http-server"], marker = "extra == 'gateway'", specifier = "==1.1.2" },
     { name = "fastapi", marker = "extra == 'gateway'", specifier = ">=0.110.0" },
     { name = "httpx", marker = "extra == 'test'", specifier = ">=0.27.0" },

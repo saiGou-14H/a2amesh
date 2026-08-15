@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Symmetric A2A agent mesh over NATS"
 requires-python = ">=3.11"
 dependencies = [
+    "a2a-sdk==1.1.2",
     "nats-py>=2.6.0",
     "pydantic>=2.6.0",
     "jsonschema>=4.21.0",

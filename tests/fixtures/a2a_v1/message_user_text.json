@@ -1,0 +1,9 @@
+{
+  "messageId": "msg-fixture-001",
+  "parts": [
+    {
+      "text": "hello from official A2A"
+    }
+  ],
+  "role": "ROLE_USER"
+}
