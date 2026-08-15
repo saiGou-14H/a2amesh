@@ -121,6 +121,8 @@ bundle 是 RFC 8785 canonical JSON，使用允许算法的 JWS 签名。至少�
 
 启用ordered Event Outbox的CORE generation还必须分别列出`event-relay`与`ops-recovery`稳定Principal/NKey。Relay只获claim/reclaim/published/reschedule；Ops Recovery只获`outbox.recover`且须经独立机器Credential/capability和不可变repair evidence。两者不得共用NKey或继承彼此权限，缺任一READY或DEAD→PENDING正反例未通过均NACK。
 
+启用DATA-RECOVERY-001 summary/archive compaction的generation必须在`components[]`列出独立`recovery-compactor`稳定Principal、nodeId、NKey selector、archive-transition signing kid和`requiredForProfiles`；它不得与Recovery Orchestrator/Verifier/State/Audit复用NKey或signing key，只可publish NATS §16.6唯一`a2a.v1.state.recovery.compact`及自身inbox/READY overlay。State按Redis §5.20.1 persistent due/scan/source lease/fence/transition ledger重验，组件缺失、ACL多授其他Recovery subject、signing kid不在recoveryPolicy compactor signer slot或双Compactor旧fence负例未通过均NACK。
+
 `recoveryPolicy.requiredComponents[]`每项恰含`componentType,componentPrincipal,nodeId,verificationMethod,expectedDigest`，按前三字段UTF-8字节严格升序、不得重复/为空，expectedDigest恰为64位小写SHA-256。集合必须恰等于`CONFIG_CONTROLLER,STATE_SERVICE,GATEWAY,NATS_JETSTREAM,OBJECT_STORE,ARTIFACT_BROKER,AUDIT_SINK`各至少一个稳定slot与本delivery profile全部`requiredForProfiles`组件slot的并集；Config validate必须从`components[]`和部署描述符重算，caller少报/多报/使用通配或把动态instanceId当稳定slot全部REJECTED。Recovery Manifest/Restore Receipt只能引用该exact signed set。
 
 启用NATS Binding的CORE generation，其`deliveryProfile.requiredGateTestIds`必须恰包含`TEST-NATS-ACL-001`与`TEST-NATS-STREAM-SESSION-001`；这里只声明静态门禁ID，不包含尚未生成的报告。报告URI/SHA-256及bundle/ACL绑定只进入§3.3独立GateEvidenceRecord；payload出现`gateEvidenceRefs`或任意报告hash必须NACK。
