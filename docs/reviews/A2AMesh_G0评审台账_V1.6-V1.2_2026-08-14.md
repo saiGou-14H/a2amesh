@@ -44,19 +44,19 @@ G0 只判定设计合同是否唯一、可实现、可测试，不判定代码�
 |---|---|---|
 | 活动 Markdown 结构 | 14 文件；每份一个 H1；围栏闭合 | PASS（候选快照） |
 | 本地链接 | R10-C4治理工作树共87份tracked Markdown；markdown-it-py 4.2.0/CommonMark递归`inline.children`口径计本地`link_open href` 670、image src 4、总计674；外链/纯fragment不计；破链0；7个archive manifest | PASS（R10-C4重算） |
-| 外部链接 | 当前权威集 15 个唯一 URL，HTTP 15/15 成功 | PASS（候选快照） |
+| 外部链接 | R10-G3.1从14份活动规范提取15个唯一Markdown href；逐链真实GET均为2xx/3xx，RFC 9728经IPv4/退避后200并跳转`/info/rfc9728/` | PASS（R10-G3.1） |
 | G0/ID | G0-01～15；27个G0 TEST ID、10个DATA ID均有专项定义；R10目标88个唯一State request literal及精确caller coverage | PASS（R10-C4重算） |
 | Markdown 表格 | 固定范围`docs/specs/*.md`14份+根README+本台账；markdown-it-py table parser重算123+2+9=134组表格 | PASS（R10-C4重算） |
 | 版本/术语 | 规范性 A2A 声明/链接均为 v1.0.1；版本历史表保留真实 v1.0 行；活动Markdown URL无`/latest/`或旧 custom Binding文案 | PASS（候选快照） |
-| SVG/HTML | XML/HTML 可解析，内嵌 SVG 与源文件字节同源，①～⑦唯一 | PASS（候选快照） |
-| 架构图视觉 | 候选图为1800×1120；三组Runtime→private worktree箭头清晰，State/Object Store→WORM捷径均已移除，Workers/Relays在独立源点经底部专用走廊进入WORM，标注`AUDIT RELAY (WORKERS ONLY) → WORM`；`NO WORM PUBLISH`与`AUDIT ONLY`可读，无裁切/严重遮挡 | 已渲染并完成视觉复核：PASS |
+| SVG/HTML | R10-G3.2用XML/HTML解析器通过；独立SVG与HTML inline SVG逐字节同源，SHA-256=`b7792dabec665447e4c0089e9392217230615cab33636d66c34336438551cd15`，尺寸1800×1120，16个SVG ID唯一 | PASS（R10-G3.2） |
+| 架构图视觉 | R10-G3.3隔离渲染PNG为1800×1120、SHA-256=`6e410fe9902c8b7e85f94c61fb079ffb30180fbcd36c7054dfc9b16aa1d3c466`；三组Runtime→private worktree箭头清晰，State/Object Store→WORM捷径均已移除，Workers/Relays在独立源点经底部专用走廊进入WORM，标注`AUDIT RELAY (WORKERS ONLY) → WORM`；`NO WORM PUBLISH`与`AUDIT ONLY`可读，无裁切/严重遮挡。小字号为非阻断可读性提示 | PASS（R10-G3.3） |
 | Python 编译 | 隔离候选快照执行`uv run python -m compileall -q src` | PASS |
 | 测试 | 隔离候选快照执行`uv run --extra test pytest -q -p no:cacheprovider`：46 passed，6 skipped；真实NATS安全fixture `tests/test_security.py`：6 passed | PASS（6个普通skip均为无安全环境时的条件skip，安全fixture已单独通过） |
 | 静态检查 | 隔离候选快照执行`uv run --with ruff ruff check .` | PASS |
 | CLI smoke | 隔离候选快照执行`uv run a2amesh --help`、`uv run mesh --help` | PASS |
 | Diff 格式 | `git diff --cached --check` | PASS |
 
-本节是累积门禁证据而非当前批准：设计payload截至R10-C3 clean checkpoint（commit `092fb05ae3f438d64ffb83a3417f6ca1f7891d43`、tree `8752b69a77cd9569676e207b4927e177dc0d36ea`）；本地链接、表格和State subject行又在加入本台账第八轮记录后的R10-C4治理工作树重算。compileall/pytest/Ruff/CLI等其余行仍是较早候选证据，必须在R10最终冻结tree上全部重跑，不能由本表沿用为最终证明。
+本节是累积门禁证据而非当前批准：设计payload截至R10-C3 clean checkpoint（commit `092fb05ae3f438d64ffb83a3417f6ca1f7891d43`、tree `8752b69a77cd9569676e207b4927e177dc0d36ea`）；本地链接、表格和State subject行在R10-C4治理工作树重算；外链、SVG/HTML与视觉证据在R10-G3工作树重算。compileall/pytest/Ruff/CLI等其余行仍需在R10最终冻结tree上全部重跑，不能由本表沿用为最终证明。
 
 ## 4. 独立关闭复审
 
@@ -148,7 +148,7 @@ R9-F绑定commit `8ed1ebb1cd105c0b50156267c2dd3d62c9862ccb`、tree `315c49f254f4
 
 ### 当前修订候选状态（非复审结论、非批准）
 
-R10以第八轮FAIL为基线按可回滚小模块修订，当前已形成：R10-A `ded7bd0`（执行/recovery/Plan/Stream/Gateway-Core/IPC）、R10-B `7a86ff4`（Recovery compaction与WORM旁路）、R10-C1 `03dcd14`（production rollout evidence顺序）、R10-C2 `7d4eb71`（Recon claim-control/due scanner）、R10-C3 `092fb05`（source-centric typed refs）。各模块只通过定向合同探针并形成未标`[verified]`的本地commit；尚未在同一最终tree执行完整代码/文档/链接/视觉/真实NATS门禁，也尚未取得A/B/C独立PASS。下一步是R10全量门禁和冻结候选tree；三路未全部PASS且manifest未复验前，本节与这些checkpoint均不构成批准。
+R10以第八轮FAIL为基线按可回滚小模块修订，当前已形成：R10-A `ded7bd0`（执行/recovery/Plan/Stream/Gateway-Core/IPC）、R10-B `7a86ff4`（Recovery compaction与WORM旁路）、R10-C1 `03dcd14`（production rollout evidence顺序）、R10-C2 `7d4eb71`（Recon claim-control/due scanner）、R10-C3 `092fb05`（source-centric typed refs）、R10-G3正在收口SVG EOF同源修复与外链/视觉证据。G1代码门禁、G2文档合同门禁和G3外链/资产/视觉局部门禁已分别通过；尚未在同一最终tree执行G4真实NATS安全门禁、最终冻结和A/B/C独立PASS。三路未全部PASS且manifest未复验前，本节与这些checkpoint均不构成批准。
 
 ## 5. 批准记录
 
