@@ -7,6 +7,7 @@ import json
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from enum import StrEnum
 from importlib.resources import files
 from typing import Any, cast
 
@@ -177,6 +178,119 @@ class StreamSessionFrameV1:
         )
 
 
+class StreamFrameDisposition(StrEnum):
+    NEW = "new"
+    REDELIVERY = "redelivery"
+
+
+@dataclass(frozen=True, slots=True)
+class StreamFrameCursorV1:
+    """Immutable caller-side/session-side sequence gate for committed live frames."""
+
+    stream_session_id: str
+    stream_open_id: str
+    task_id: str
+    snapshot_event_seq: int
+    last_sequence: int = 0
+    last_event_seq: int | None = None
+    last_payload_digest: str | None = None
+    final: bool = False
+
+    def __post_init__(self) -> None:
+        for field_name, value in (
+            ("streamSessionId", self.stream_session_id),
+            ("streamOpenId", self.stream_open_id),
+            ("taskId", self.task_id),
+        ):
+            if not isinstance(value, str) or not _SAFE_TOKEN.fullmatch(value):
+                raise BindingValidationError(f"{field_name} is not a safe token")
+        for field_name, value in (
+            ("snapshotEventSeq", self.snapshot_event_seq),
+            ("lastSequence", self.last_sequence),
+        ):
+            if type(value) is not int or not 0 <= value <= 9_007_199_254_740_991:
+                raise BindingValidationError(
+                    f"{field_name} is outside JSON safe integer range"
+                )
+        if self.last_event_seq is None:
+            object.__setattr__(self, "last_event_seq", self.snapshot_event_seq)
+        elif (
+            type(self.last_event_seq) is not int
+            or not 0 <= self.last_event_seq <= 9_007_199_254_740_991
+        ):
+            raise BindingValidationError("lastEventSeq is outside JSON safe integer range")
+        if type(self.final) is not bool:
+            raise BindingValidationError("cursor final must be boolean")
+        if self.last_sequence == 0:
+            if self.last_event_seq != self.snapshot_event_seq:
+                raise BindingValidationError(
+                    "empty cursor lastEventSeq must equal snapshotEventSeq"
+                )
+            if self.last_payload_digest is not None or self.final:
+                raise BindingValidationError(
+                    "empty cursor cannot have a payload digest or final state"
+                )
+        else:
+            if self.last_event_seq is None or self.last_event_seq <= self.snapshot_event_seq:
+                raise BindingValidationError(
+                    "advanced cursor lastEventSeq must exceed snapshotEventSeq"
+                )
+            if not isinstance(self.last_payload_digest, str) or not _DIGEST.fullmatch(
+                self.last_payload_digest
+            ):
+                raise BindingValidationError(
+                    "advanced cursor requires a lowercase SHA-256 payload digest"
+                )
+
+    def accept(
+        self, frame: StreamSessionFrameV1
+    ) -> tuple[StreamFrameCursorV1, StreamFrameDisposition]:
+        if not isinstance(frame, StreamSessionFrameV1):
+            raise BindingValidationError("live frame must be StreamSessionFrameV1")
+        if frame.stream_session_id != self.stream_session_id:
+            raise BindingValidationError("live frame streamSessionId mismatch")
+        if frame.stream_open_id != self.stream_open_id:
+            raise BindingValidationError("live frame streamOpenId mismatch")
+        event_task_id, terminal = _live_event_identity(frame)
+        if event_task_id != self.task_id:
+            raise BindingValidationError("live frame Task ID mismatch")
+        if frame.final != terminal:
+            raise BindingValidationError(
+                "live frame final does not match committed Task terminal state"
+            )
+
+        if frame.sequence == self.last_sequence and self.last_sequence > 0:
+            if (
+                frame.event_seq == self.last_event_seq
+                and frame.payload_digest == self.last_payload_digest
+                and frame.final == self.final
+            ):
+                return self, StreamFrameDisposition.REDELIVERY
+            raise BindingValidationError("conflicting live frame redelivery")
+        if self.final:
+            raise BindingValidationError("no new sequence is allowed after final frame")
+        if frame.sequence != self.last_sequence + 1:
+            raise BindingValidationError("live frame sequence must increase by exactly one")
+        if frame.event_seq <= self.snapshot_event_seq:
+            raise BindingValidationError("live frame eventSeq must exceed snapshotEventSeq")
+        if self.last_event_seq is not None and frame.event_seq <= self.last_event_seq:
+            raise BindingValidationError("live frame eventSeq must strictly increase")
+
+        return (
+            StreamFrameCursorV1(
+                stream_session_id=self.stream_session_id,
+                stream_open_id=self.stream_open_id,
+                task_id=self.task_id,
+                snapshot_event_seq=self.snapshot_event_seq,
+                last_sequence=frame.sequence,
+                last_event_seq=frame.event_seq,
+                last_payload_digest=frame.payload_digest,
+                final=frame.final,
+            ),
+            StreamFrameDisposition.NEW,
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class StreamSessionOpenedV1:
     stream_session_id: str
@@ -283,6 +397,19 @@ class StreamSessionOpenedV1:
         if not isinstance(decoded, dict):
             raise BindingValidationError("stream open response must be a JSON object")
         return cls.from_dict(decoded)
+
+
+def _live_event_identity(frame: StreamSessionFrameV1) -> tuple[str, bool]:
+    response = cast(Any, frame.canonical_stream_response)
+    payload_kind = response.WhichOneof("payload")
+    if payload_kind == "status_update":
+        event = response.status_update
+        return event.task_id, event.status.state in _TERMINAL_STATES
+    if payload_kind == "artifact_update":
+        return response.artifact_update.task_id, False
+    raise BindingValidationError(
+        "live frame must contain committed statusUpdate or artifactUpdate"
+    )
 
 
 def _frame_core_dict(

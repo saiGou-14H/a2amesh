@@ -18,7 +18,12 @@ from .envelope import (
     BindingValidationError,
 )
 from .response import BindingError, BindingResponseEnvelope
-from .stream import StreamSessionFrameV1, StreamSessionOpenedV1
+from .stream import (
+    StreamFrameCursorV1,
+    StreamFrameDisposition,
+    StreamSessionFrameV1,
+    StreamSessionOpenedV1,
+)
 
 __all__ = [
     "A2A_PROTOCOL_VERSION",
@@ -33,6 +38,8 @@ __all__ = [
     "BindingResponseEnvelope",
     "BindingValidationError",
     "RequestReplayGuard",
+    "StreamFrameCursorV1",
+    "StreamFrameDisposition",
     "StreamSessionFrameV1",
     "StreamSessionOpenedV1",
     "VerifiedBindingIdentity",
