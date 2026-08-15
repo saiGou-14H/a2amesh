@@ -1,9 +1,16 @@
-"""数据模型（pydantic v2）。与 schemas/*.json 保持一致。"""
+"""Legacy private-prototype Pydantic models.
+
+Compatibility-only during migration to the official ``a2a-sdk`` protobuf
+objects exposed by :mod:`a2amesh.protocol`. New bindings and canonical-core
+code must not import this module.
+"""
 from __future__ import annotations
 
 from typing import Literal
 
 from pydantic import BaseModel
+
+LEGACY_COMPATIBILITY_ONLY = True
 
 
 class TextPart(BaseModel):

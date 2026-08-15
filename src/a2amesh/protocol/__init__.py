@@ -1,0 +1,68 @@
+"""Official A2A v1 protocol facade.
+
+New bindings and the canonical application core must import protocol objects from
+this package.  ``a2amesh.contracts.models`` remains only for the legacy private
+prototype during migration.
+"""
+
+from .types import (
+    A2A_PROTOCOL_VERSION,
+    A2A_SDK_VERSION,
+    AgentCard,
+    AgentInterface,
+    Artifact,
+    CancelTaskRequest,
+    DeleteTaskPushNotificationConfigRequest,
+    GetExtendedAgentCardRequest,
+    GetTaskPushNotificationConfigRequest,
+    GetTaskRequest,
+    ListTaskPushNotificationConfigsRequest,
+    ListTaskPushNotificationConfigsResponse,
+    ListTasksRequest,
+    ListTasksResponse,
+    Message,
+    Part,
+    Role,
+    SendMessageRequest,
+    SendMessageResponse,
+    StreamResponse,
+    SubscribeToTaskRequest,
+    Task,
+    TaskPushNotificationConfig,
+    TaskState,
+    TaskStatus,
+    from_protojson,
+    to_protojson_bytes,
+    to_protojson_dict,
+)
+
+__all__ = [
+    "A2A_PROTOCOL_VERSION",
+    "A2A_SDK_VERSION",
+    "AgentCard",
+    "AgentInterface",
+    "Artifact",
+    "CancelTaskRequest",
+    "DeleteTaskPushNotificationConfigRequest",
+    "GetExtendedAgentCardRequest",
+    "GetTaskPushNotificationConfigRequest",
+    "GetTaskRequest",
+    "ListTaskPushNotificationConfigsRequest",
+    "ListTaskPushNotificationConfigsResponse",
+    "ListTasksRequest",
+    "ListTasksResponse",
+    "Message",
+    "Part",
+    "Role",
+    "SendMessageRequest",
+    "SendMessageResponse",
+    "StreamResponse",
+    "SubscribeToTaskRequest",
+    "Task",
+    "TaskPushNotificationConfig",
+    "TaskState",
+    "TaskStatus",
+    "from_protojson",
+    "to_protojson_bytes",
+    "to_protojson_dict",
+]
