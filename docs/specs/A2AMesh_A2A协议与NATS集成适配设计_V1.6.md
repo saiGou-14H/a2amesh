@@ -361,9 +361,19 @@ sequenceDiagram
       P->>S: acquire_lease(taskId,instance,dispatch tuple) [provisional]
       P->>S: accept_dispatch_and_start(taskId,dispatchId,claimToken,leaseToken)
       S-->>P: ACCEPTED + WORKING committed
-      P-->>N: DispatchAccepted
-      P->>R: start exact canonical command
-      P->>S: transition_task(progress/artifact/terminal)
+      P->>P: observe_without_spawn(execution lease, command)
+      P->>P: sign ContainmentAttestation exact bytes
+      P->>S: REGISTER_CONTAINMENT(ref,digest,JWS)
+      S-->>P: registration ref/digest committed
+      P->>S: READ_CONTAINMENT(exact ref,digest)
+      S-->>P: exact JWS/read-back
+      alt all containment gates pass
+        P-->>N: DispatchAccepted
+        P->>R: start exact canonical command
+        P->>S: transition_task(progress/artifact/terminal)
+      else register/read-back failure or uncertain reply
+        P->>S: fail/expire execution lease; zero Runtime/effect/provider
+      end
       S-->>D: snapshot/index + event outbox committed
       Note over S,N: Event Relay later publishes taskId:eventSeq; Projector never writes Task authority
     end

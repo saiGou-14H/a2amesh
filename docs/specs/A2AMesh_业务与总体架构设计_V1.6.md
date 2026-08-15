@@ -362,7 +362,10 @@ Client SendMessage(returnImmediately=true)
 → claim commit 后立即返回 SUBMITTED Task，不等待 Worker
 → State DRR select 原子保留 slot 并令 intent due
 → Dispatch Worker向private dispatch subject投递DispatchTask；Task Supervisor读取immutable command并取得provisional lease
-→ accept_dispatch_and_start 原子提交 ACCEPTED + WORKING + RUNNING counter + outbox
+→ accept_dispatch_and_start 原子提交 ACCEPTED + WORKING + RUNNING counter + outbox（仅完成State受理，不得启动Runtime）
+→ Task Supervisor observe-without-spawn并签名ContainmentAttestation
+→ State REGISTER_CONTAINMENT成功后，以同ref/digest执行exact READ_CONTAINMENT
+→ 只有REGISTER与READ逐字节成功才启动Runtime/effect/provider；失败或响应不确定保持零Runtime/零effect并受控失败/过期恢复
 → intent 在 timeout/崩溃时由其他 Worker 接管，超过 deadline 才原子失败 Task
 → 大型输出先完成 Artifact upload/finalize，再提交可见 Artifact 元数据
 → 每次进度/Artifact/终态先原子更新 Redis 快照并写 outbox，执行不等待 Relay

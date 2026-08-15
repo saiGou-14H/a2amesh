@@ -625,6 +625,7 @@ newTaskJson,nowMs,fencingToken,phase/progress,eventType
 - version 匹配；
 - from→to 合法；
 - owner 写入时 fencing token 匹配；
+- 若Task存在`rootTaskId`对应的Plan映射，`STATE_TRANSITION`不得把root Task写入任一终态；root终态只能由`a2a.v1.state.plan.transition(operation=FINALIZE_BUSINESS)`在同一CAS重算Plan事实后同步写入。普通transition即使携带有效owner/fence、正确version和合法from→to也必须零写入拒绝；
 - 函数内部为外部可见 mutation 分配 `eventSeq=current+1`；调用方不能提供、跳号或复用序列；
 - 终态不可迁出。
 
@@ -812,7 +813,7 @@ State Service内置唯一`Admission Scheduler`循环，不是任意Dispatch Work
 
 选中候选后，State构造`TaskRecoveryOperationIdentityV1`，字段恰为`schemaVersion,taskId,expiredFencingToken,fromAttempt`，schemaVersion固定字符串`"1"`，taskId为1..128字节NFC UTF-8且不得含NUL，两个整数分别限制在`0..2^53-1`并按RFC8785 JSON number编码。`recoveryOperationId=lowerhex(SHA-256(ASCII("a2amesh-task-recovery-operation-v1")||0x00||RFC8785_UTF8(identity)))`；固定identity `{"expiredFencingToken":7,"fromAttempt":1,"schemaVersion":"1","taskId":"task-01"}`必须得到`f077d339a655daa6cd8da29e5992a3238178b9c3c53f9c051ad73f705fa819fe`。`operationRequestV1`字段恰为`schemaVersion,identity,canonicalCommandDigest,configGeneration,policySnapshotHash,retryPolicyHash`，其requestDigest为该对象RFC8785 SHA-256，**不含recoveryScanId/scan requestDigest/scanner身份**；因此同一过期lease tuple经不同scan仍命中同一operation且逐字节返回原result，scan ledger只引用该operation结果。
 
-Function只处理lease丢失后的非终态WORKING Task，原子校验targetAgentId、retryPolicy/maxAttempts/nextRetryMs、hard deadline、cancel、旧lease已过期、admission=RUNNING及既有slotToken、私有worktree和全部effect。UNKNOWN/APPLYING/不安全APPLIED创建或复用case并返回RECONCILIATION_REQUIRED。安全时同一CAS写operation、移除旧due、确定toAttempt=fromAttempt+1并创建唯一`dispatchMode=RECOVERY_RESUME`的新dispatch（复用canonical command/config/policy和既有running slot），直接PENDING并加入dispatch due；Task状态/owner/attempt/admission计数此时均不改变。旧ACCEPTED dispatch只保留历史。后续唯一合法路径为Dispatch Worker→`task.command.get`→`lease.acquire(RECOVERY_PROVISIONAL)`→`dispatch.accept(RECOVERY_RESUME)`；任一步丢响应按scan/operation/dispatch账本重放，绝不创建第二intent或重复attempt。
+Function只处理lease丢失后的非终态WORKING Task，原子校验targetAgentId、retryPolicy/maxAttempts/nextRetryMs、hard deadline、cancel、旧lease已过期、admission=RUNNING及既有slotToken、私有worktree和全部effect。UNKNOWN/APPLYING/不安全APPLIED不进入RECOVERY_RESUME：在旧lease已过期且无有效owner、effect事实已重验后，执行唯一原子`RECONCILIATION_REQUIRED`分支，创建或复用case并同时将Task写为`FAILED`且`reconciliationRequired=true`，清除owner/lease，按既有RUNNING slotToken恰好释放一次running admission，移除Task recovery due及当前recovery dispatch due，推进fence/tombstone，并写入唯一operation result、audit和outbox。该分支不得创建新dispatch、不得改变queued/reserved计数、不得自动重试effect；同一recoveryOperationId/requestDigest在提交后回复丢失时逐字节返回原结果，异digest零写入。
 
 ### 6.20 `expire_queue` / deadline 优先级
 

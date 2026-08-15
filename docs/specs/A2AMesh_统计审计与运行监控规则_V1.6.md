@@ -388,8 +388,11 @@ Gateway.SendMessage
   TaskSupervisor.command.get
   TaskSupervisor.acquire_lease (result=PROVISIONAL)
   State.accept_dispatch_and_start CAS == ACCEPTED/WORKING/RUNNING
-  TaskSupervisor.register_containment_attestation
-  Runtime.execute / Effect.begin
+  TaskSupervisor.observe_without_spawn
+  TaskSupervisor.sign_containment_attestation
+  State.register_containment_attestation
+  State.read_containment_attestation (exact ref/digest/JWS)
+  Runtime.execute / Effect.begin (only after containment read-back)
     Tool.call
   State.transition_and_outbox
   EventRelay.publish

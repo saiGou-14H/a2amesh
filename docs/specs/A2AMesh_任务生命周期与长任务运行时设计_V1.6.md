@@ -507,7 +507,7 @@ resolution 与 effect ledger、case、Task `reconciliationRequired` 聚合、Tas
 4. State 查询side-effect ledger、Task/lease、本地恢复记录引用和provider状态；
 5. 只有全部effect为无副作用、明确`FAILED_BEFORE_CALL/NOT_APPLIED`或具有可证明的provider幂等结果时，`claim_recovery_attempt`才以稳定recoveryOperationId创建唯一`dispatchMode=RECOVERY_RESUME`的新intent；该intent复用Task既有`admission=RUNNING/slotToken`，直接进入PENDING/due，不创建QUEUED/SELECTED reservation、不改变queued/reserved/running计数，也不得对旧ACCEPTED intent获取新lease；
 6. 相同recoveryScanId重试返回原结果，新scanner即使使用新scan ID也由operation tuple去重；State提交后response丢失时已提交intent仍继续投递。新Supervisor仍严格执行`command.get → acquire_lease(RECOVERY_PROVISIONAL) → dispatch.accept(RECOVERY_RESUME) → containment REGISTER/READ`；recovery accept要求Task保持WORKING、旧lease已过期、admission仍RUNNING，并只原子替换owner/attempt/fence、写`TASK_OWNER_RECOVERED`，不产生第二个`TASK_WORKING`或第二份running计数；
-7. owner已失效且存在`UNKNOWN`时Task固定进入`FAILED + reconciliation_required`，禁止自动重放；
+7. owner已失效且存在`UNKNOWN`时，或State重验发现`APPLYING/不安全APPLIED`，`claim_recovery_attempt`固定走同CAS的`RECONCILIATION_REQUIRED`分支：Task→`FAILED`并设置`reconciliation_required`，释放既有RUNNING admission恰好一次、移除recovery/dispatch due、推进fence并创建/复用唯一case、audit/outbox/result；禁止自动重放、创建RECOVERY_RESUME或重复释放计数。
 8. 旧owner恢复也因fencing token失效不能写。
 
 ### 14.2 Gateway/SSE 崩溃
