@@ -954,11 +954,11 @@ Credential/Alias/Grant、Card publisher、delivery profile、Artifact policy、R
 → 在candidate网络部署Artifact/Reconciliation、Dispatch Worker、Event Relay、Ops Recovery、JS Provisioner、至少两个Stream Session Controller、Peer Binding、独立Application Core、Task Supervisor、Orchestrator和Gateway canary（不接生产流量），经candidate State ingress各自报告READY
 → 核对peer-binding/application-core/task-supervisor/orchestrator/event-relay/ops-recovery/stream-session-controller/js-provisioner不同Principal/NKey READY、唯一Card publisher及generation一致
 → 将candidate两份PASS/0-skip报告写入不可变URI，绑定staged bundleContentSha256+aclDigest+candidate environmentDigest，生成candidate GateEvidence供隔离门禁审计（不可单独授权production CAS）
-→ 调用`ops config activate --evidence-sha256 ... --expect-acl-digest ...`；Controller以PREPARE取得rollout lease/fence/revision并为每阶段写operation ledger，长窗口周期RENEW；随后关闭Gateway/业务State入口并排空producer
+→ 以已stage的candidate evidenceSha256调用`ops config rollout prepare`，只执行PREPARE并取得持久rolloutLeaseId/fence/revision；长窗口用显式`rollout renew`续租，再调用`rollout enter-maintenance`只执行ENTER_MAINTENANCE，关闭Gateway/业务State入口并排空producer（这些阶段均无未来productionEvidenceSha256）
 → 在流量仍关闭时对生产candidate config执行`nats-server -t`、reload隔离测试过的同一exact bytes并重读deployedAclDigest
 → 以同一exact production ACL/stream、generation和rollout lease/fence在维护域启动新组件GATED_PASSIVE实例，只开放health/config.ready，不接业务流量；各required slot以`PRODUCTION_GATED`、deployed ACL/stream digest和production environmentDigest报告READY
-→ 读取所有production READY receipt并生成新的production-bound GateEvidenceRecord，通过`ops config evidence stage`写入；缺任一production slot、错误environment/deployed digest或candidate-only receipt时ACTIVATE零写入
-→ 以内部rolloutLeaseId/fence/revision+deployedAclDigest+deployedStreamConfigDigest+production evidenceSha256执行active CAS；CAS前失败恢复exact active ACL/stream后才开旧流量，CAS后组件已在gated域运行，只做health重验并由FINISH_ROLLOUT切换业务listener/开State业务门，最后开外部Gateway；任一lease过期只能由`ops config rollout recover`双凭据TAKEOVER，State按active pointer唯一判定RESTORE或FINISH并永久拒绝旧fence
+→ 读取所有production READY receipt并生成新的production-bound GateEvidenceRecord，通过`ops config evidence stage-production <generation> <rolloutLeaseId>`独立持久化；缺任一production slot、错误environment/deployed digest或candidate-only receipt时该阶段拒绝，尚未调用ACTIVATE
+→ 用已知production evidenceSha256调用`ops config rollout activate <generation> <rolloutLeaseId>`，Controller从持久rollout读取current fence/revision与部署read-back digests并只执行ACTIVATE active CAS；CAS前失败显式recover/restore，CAS后组件已在gated域运行，再以`rollout finish`只执行FINISH_ROLLOUT切换业务listener/开State业务门，最后开外部Gateway；任一lease过期只能由`rollout recover`双凭据TAKEOVER，State按active pointer唯一判定RESTORE或FINISH并永久拒绝旧fence
 → 官方黑盒
 → 一台 Windows canary
 → 三机全量
