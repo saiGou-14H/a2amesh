@@ -51,7 +51,7 @@ G0 只判定设计合同是否唯一、可实现、可测试，不判定代码�
 | SVG/HTML | R10-G3.2用XML/HTML解析器通过；独立SVG与HTML inline SVG逐字节同源，SHA-256=`b7792dabec665447e4c0089e9392217230615cab33636d66c34336438551cd15`，尺寸1800×1120，16个SVG ID唯一 | PASS（R10-G3.2） |
 | 架构图视觉 | R10-G3.3隔离渲染PNG为1800×1120、SHA-256=`6e410fe9902c8b7e85f94c61fb079ffb30180fbcd36c7054dfc9b16aa1d3c466`；三组Runtime→private worktree箭头清晰，State/Object Store→WORM捷径均已移除，Workers/Relays在独立源点经底部专用走廊进入WORM，标注`AUDIT RELAY (WORKERS ONLY) → WORM`；`NO WORM PUBLISH`与`AUDIT ONLY`可读，无裁切/严重遮挡。小字号为非阻断可读性提示 | PASS（R10-G3.3） |
 | Python 编译 | 隔离候选快照执行`uv run python -m compileall -q src` | PASS |
-| 测试 | 隔离候选快照执行`uv run --extra test pytest -q -p no:cacheprovider`：46 passed，6 skipped；真实NATS安全fixture `tests/test_security.py`：6 passed | PASS（6个普通skip均为无安全环境时的条件skip，安全fixture已单独通过） |
+| 测试 | R10-G1默认隔离套件：46 passed、6 conditional skipped；R10-G4.2在Docker `nats:2.10.26`（image digest `sha256:736d575e60135ce1d50fc206675d48d0e57dcaa0704f696f0cb4b5f6dadd49d7`）上执行`tests/test_security.py`：6 passed、0 skipped；R10-G4.3另执行State/他人inbox/JS DELETE三项broker permission negative：3/3 PASS | PASS（R10最终tree仍需重跑全套） |
 | 静态检查 | 隔离候选快照执行`uv run --with ruff ruff check .` | PASS |
 | CLI smoke | 隔离候选快照执行`uv run a2amesh --help`、`uv run mesh --help` | PASS |
 | Diff 格式 | `git diff --cached --check` | PASS |
@@ -148,7 +148,7 @@ R9-F绑定commit `8ed1ebb1cd105c0b50156267c2dd3d62c9862ccb`、tree `315c49f254f4
 
 ### 当前修订候选状态（非复审结论、非批准）
 
-R10以第八轮FAIL为基线按可回滚小模块修订，当前已形成：R10-A `ded7bd0`（执行/recovery/Plan/Stream/Gateway-Core/IPC）、R10-B `7a86ff4`（Recovery compaction与WORM旁路）、R10-C1 `03dcd14`（production rollout evidence顺序）、R10-C2 `7d4eb71`（Recon claim-control/due scanner）、R10-C3 `092fb05`（source-centric typed refs）、R10-G3正在收口SVG EOF同源修复与外链/视觉证据。G1代码门禁、G2文档合同门禁和G3外链/资产/视觉局部门禁已分别通过；尚未在同一最终tree执行G4真实NATS安全门禁、最终冻结和A/B/C独立PASS。三路未全部PASS且manifest未复验前，本节与这些checkpoint均不构成批准。
+R10以第八轮FAIL为基线按可回滚小模块修订，当前已形成：R10-A `ded7bd0`（执行/recovery/Plan/Stream/Gateway-Core/IPC）、R10-B `7a86ff4`（Recovery compaction与WORM旁路）、R10-C1 `03dcd14`（production rollout evidence顺序）、R10-C2 `7d4eb71`（Recon claim-control/due scanner）、R10-C3 `092fb05`（source-centric typed refs）、R10-G3 `c81e0c0`（外链/架构资产/视觉）、G4正在收口真实NATS与e2e路径修复。G1代码门禁、G2文档合同门禁、G3外链/资产/视觉门禁和G4.1～G4.3局部门禁已分别通过；G4修复尚未提交最终checkpoint，仍需在最终tree重跑全套测试、最终冻结和A/B/C独立PASS。三路未全部PASS且manifest未复验前，本节与这些checkpoint均不构成批准。
 
 ## 5. 批准记录
 

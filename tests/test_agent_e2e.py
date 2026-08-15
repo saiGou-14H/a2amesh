@@ -13,13 +13,14 @@ from a2amesh.config import Config
 from a2amesh.runtime.agent import AgentRuntime
 
 NATS_URL = "nats://127.0.0.1:4222"
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 async def main():
     cfg = Config.model_validate({
         "nats": {"url": NATS_URL, "nkey_seed_env": "A2AMESH_NKEY_SEED"},
         "agent": {"name": "win1", "description": "e2e test agent",
-                  "default_runtime": "hermes", "workdir": "/root/a2amesh",
+                  "default_runtime": "hermes", "workdir": str(REPO_ROOT),
                   "runtimes": ["hermes"], "tools_dir": "./nonexistent",
                   "public_tools": ["read_file", "list_dir"]},
         "mcp": [],
@@ -41,7 +42,7 @@ async def main():
     print(f"✅ AgentCard: runtimes={rt_names} tools={tool_names}")
 
     # 2. tools/call 走完整 serve 链路
-    res = await client.call_tool("win1", "list_dir", {"path": "/root/a2amesh"})
+    res = await client.call_tool("win1", "list_dir", {"path": str(REPO_ROOT)})
     assert "entries" in res and "src" in res["entries"], res
     print("✅ tools/call list_dir:", res["entries"])
 
