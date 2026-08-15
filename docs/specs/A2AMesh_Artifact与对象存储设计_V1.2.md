@@ -141,8 +141,7 @@ mesh/<meshId>/uploads/<yyyy>/<mm>/<uploadId>
 | `POST` | `/api/a2amesh/v1/artifacts/{artifactId}/holds` | 创建保留锁 | `201`，返回 immutable holdId/digest |
 | `PUT` | `/api/a2amesh/v1/artifacts/{artifactId}/holds/{holdId}` | 只延长 active hold | `200`，返回新 expiry/digest |
 | `DELETE` | `/api/a2amesh/v1/artifacts/{artifactId}/holds/{holdId}` | 释放 hold，保留历史记录 | `200`，返回 RELEASED hold |
-| `POST` | `/api/a2amesh/v1/artifacts/{artifactId}/refs` | 受信 source service以source canonical commit方式提交typed ref；不得先暴露source再补ref | `200`，返回ref commit digest/Artifact version |
-| `DELETE` | `/api/a2amesh/v1/artifacts/{artifactId}/refs/{refType}/{refId}` | source owner提交移除该ref的新canonical source version；不得独立删除索引 | `200`，返回source/ref commit result |
+| `POST` | `/api/a2amesh/v1/sources/{sourceType}/{sourceId}/versions/{sourceVersion}/artifact-ref-commits` | 受信source owner提交canonical source版本及其完整Artifact ref集合；一次可原子修改多个Artifact | `200`，返回typed source commit exact result |
 
 ### 5.1 创建上传会话
 
@@ -179,13 +178,21 @@ completion 不接受客户端自报“已成功”作为事实。服务端必须
 
 ### 5.5 Hold 与 typed reference
 
-hold API只允许独立机器Credential的`ops.artifact.hold`，或signed config明列的Reconciliation/Security service Principal；业务Task Credential不能自授legal hold。source-commit/ref API只允许对应TASK/CASE/EVIDENCE source owner service或`ops.artifact.ref`，必须提交当前source version的canonical正文、完整新ref集合和expected source version；不得先让新source可见再补索引，也不得独立删除旧source的ref。
+hold API只允许独立机器Credential的`ops.artifact.hold`，或signed config明列的Reconciliation/Security service Principal；业务Task Credential不能自授legal hold。source-centric commit API只允许对应TASK/CASE/EVIDENCE source owner service或`ops.artifact.ref`，sourceType closed enum固定`TASK|CASE|EVIDENCE`。sourceVersion是1..2^53-1的JSON整数，path只接受无加号、无前导零的canonical十进制；expectedSourceVersion首版显式null，后续必须恰为sourceVersion-1。path三元组是授权和版本事实，body不得重复或覆盖sourceType/sourceId/sourceVersion；每次必须提交canonical正文、完整新ref集合和expected source version。不得先让新source可见再补索引，也不存在按目标Artifact独立删除ref的HTTP入口。
 
-ref wire固定为`refType,refId,sourceVersion,digest`，唯一键为`artifactId+refType+refId`；State同时维护`artifact:<artifactId>:refs[<refType>:<refId>]`和`artifact:ref-source:<refType>:<refId>`，不得使用task-centric混合member猜测依赖。所有能使TASK/CASE/EVIDENCE source变为VISIBLE的writer必须调用同一`commit_typed_source_and_refs`原子Function，并提交source canonical bytes/digest、完整typed refs、Idempotency-Key/requestDigest、expected source/Artifact versions；函数在同一CAS更新source正文/visibility、Artifact version、retention lock、双向索引、AuditEnvelopeV1和outbox。source在该CAS前不可见；source writer不能先append后调用add-ref。`POST .../refs`只是该source-commit helper的受信入口，若source已VISIBLE但缺ref不允许直接补写，必须提交新sourceVersion或进入受审repair。hold记录append-only，release/expiry只改状态；renew只能延长。Artifact已DELETING/DELETED时禁止新增hold/ref。
+typed ref item固定五字段`artifactId,refType,refId,sourceVersion,digest`，唯一键为`artifactId+refType+refId`。同一commit中每项`refType/refId`必须逐字节等于path的sourceType/sourceId，`sourceVersion`必须数值等于canonical path解析值，digest必须等于该目标`ArtifactRecord.contentSha256`；按`(refType,refId,artifactId)`各字段UTF-8严格升序且不得重复。`refs[]`是该source version的完整新集合，空数组表示以新source version移除全部旧引用。State同时维护`artifact:<artifactId>:refs[<refType>:<refId>]`和`artifact:ref-source:<refType>:<refId>`，不得使用task-centric混合member猜测依赖。
+
+所有能使TASK/CASE/EVIDENCE source变为VISIBLE的writer必须调用同一`commit_typed_source_and_refs`原子Function，并提交source canonical bytes/digest、完整五字段refs、Idempotency-Key/requestDigest、expected source/Artifact versions；函数在同一CAS更新source正文/visibility、Artifact version、retention lock、双向索引、AuditEnvelopeV1和outbox。source在该CAS前不可见；source writer不能先append后补ref。若source已VISIBLE但缺ref，不允许按Artifact路径修补，必须提交新sourceVersion或进入受审repair。hold记录append-only，release/expiry只改状态；renew只能延长。Artifact已DELETING/DELETED时禁止新增hold/ref。
 
 Reaper/delete与hold/ref mutation使用同一Artifact version CAS：锁先提交则delete返回409/423；DELETING先提交则后续source-commit失败且source保持不可见/原版本不变，调用方必须重试到新Artifact/sourceVersion；Redis Function任意crash点都不能形成source已VISIBLE但retention index缺失的半状态。外部Object Store在CAS前已验证的正式blob若随后State提交失败只能成为受控orphan，由inventory/Reaper隔离，不得反向制造source或ref。
 
-`TypedSourceCommitRequestV1`字段恰为`schemaVersion,commitId,sourceType,sourceId,sourceVersion,canonicalSourceJson,sourceDigest,refs,expectedSourceVersion,expectedArtifactVersions,idempotencyKey,requestDigest,authProof`；`refs[]`按`(refType,refId,artifactId)`UTF-8严格升序且不得重复，每项恰为`artifactId,refType,refId,sourceVersion,digest`。State验证canonicalSourceJson/RFC8785/sourceDigest、source owner/capability、每个Artifact状态/version/lock和sourceVersion连续性；一个CAS同时写source VISIBLE、所有forward/reverse refs、active*Refs/retention lock、Artifact versions、commit result/audit/outbox。`TypedSourceCommitResultV1`恰为`schemaVersion,commitId,sourceType,sourceId,sourceVersion,sourceDigest,refDigests,artifactVersions,resultDigest`。同commitId+requestDigest+bytes逐字节返回原result，异digest/字段/版本零写入；函数提交前、提交后、响应丢失均不得出现可见source+missing ref。
+HTTP body字段恰为`schemaVersion,commitId,canonicalSourceJson,sourceDigest,refs,expectedSourceVersion,expectedArtifactVersions`，`Idempotency-Key`只来自header；adapter把path三元组、header、body和认证观察值注入内部request，body出现sourceType/sourceId/sourceVersion/idempotencyKey/authProof/requestDigest均拒绝。`expectedArtifactVersions[]`每项恰为`artifactId,expectedVersion`，按artifactId UTF-8严格升序且不得重复，其artifactId集合必须恰等于当前source oldRefs与请求newRefs的并集，不能少报被移除目标或多报无关Artifact。
+
+内部`TypedSourceCommitRequestV1`字段恰为`schemaVersion,commitId,sourceType,sourceId,sourceVersion,canonicalSourceJson,sourceDigest,refs,expectedSourceVersion,expectedArtifactVersions,idempotencyKey,requestDigest,authProof`。State要求canonicalSourceJson已经是RFC8785 UTF-8 exact bytes且`sourceDigest=lowerhex(SHA-256(exact bytes))`，source version连续；refs遵守上述五字段/path绑定并逐项匹配目标contentSha256。`requestDigest=lowerhex(SHA-256(RFC8785(request排除requestDigest,authProof)))`，因此path source tuple和header Idempotency-Key明确进入digest。commit幂等scope exact bytes为`UTF8(sourceType)+0x00+UTF8(sourceId)+0x00+UTF8(sourceVersion)+0x00+UTF8(sourceOwnerPrincipalHash)+0x00+UTF8(Idempotency-Key)`；commitId必须等于`lowerhex(SHA-256(UTF8("a2amesh-typed-source-commit-v1")+0x00+scopeBytes))`。
+
+Function先读取当前source forward set得到oldRefs，以old/new并集为touched Artifact set并在一个CAS中：校验source owner/capability、path tuple、版本/canonical bytes及expected集合；要求所有new目标非DELETING/DELETED且content digest匹配；写新source version VISIBLE/current pointer；按差集增删forward/reverse ref和retention lock；每个touched Artifact version恰递增一次；最后写source-commit exact result/audit/outbox。DELETE/Reaper先赢则commit零写入且source不可见；commit先赢则DELETE返回409/423。
+
+`TypedSourceCommitResultV1`字段恰为`schemaVersion,commitId,sourceType,sourceId,sourceVersion,sourceDigest,refDigests,artifactVersions,resultDigest`；`refDigests[]`每项恰为`artifactId,refType,refId,sourceVersion,digest`并与新refs同序，`artifactVersions[]`每项恰为`artifactId,version`并按artifactId排序、恰覆盖touched set。resultDigest为排除自身后RFC8785 SHA-256。同commitId/scope/requestDigest/exact bytes逐字节返回原result，异digest/字段/版本零写入；Function提交前、提交后、响应丢失均不得出现VISIBLE source+missing ref。
 
 ---
 
@@ -274,7 +281,7 @@ Artifact 域必须提供状态/字节、upload/finalize/download/delete 结果�
 - **TEST-ARTIFACT-SEC-001**：无公共 bucket、目录遍历、SSRF、跨对象覆盖、signed URL/secret 泄漏。
 - **TEST-ARTIFACT-RACE-001**：finalize vs terminal/cancel/delete、download ticket vs delete 的 CAS 线性化稳定。
 - **TEST-ARTIFACT-AUTH-RETENTION-001**：Task 热快照清理后仍可按最小 owner 墓碑安全授权，且不扩大可见范围。
-- **TEST-ARTIFACT-HOLD-REF-001**：并发create/renew/release/expire hold、TASK/CASE/EVIDENCE source commit及source-version add/remove ref与Reaper/delete；在canonical source校验、ref校验、CAS前、CAS后、State/reply丢失、DELETE先/commit先各点杀进程。断言source visibility、typed双向索引、retention计数、Artifact version、source-commit ledger和审计同CAS，任意时刻不存在VISIBLE source+missing ref；重复幂等不重复计数，旧version/digest拒绝，任一active hold/ref阻止DELETING，DELETING后不能新增锁/ref，删除ref只能通过新sourceVersion而不能独立删索引。
+- **TEST-ARTIFACT-HOLD-REF-001**：并发create/renew/release/expire hold及TASK/CASE/EVIDENCE source commit与Reaper/delete。正例用一个source-centric commit同时引用两个Artifact，下一sourceVersion以完整集合保留一个/移除一个，再以空refs移除全部；expectedArtifactVersions每次恰覆盖old∪new且每个touched Artifact version只+1。在canonical source/ref/content digest校验、CAS前后、State commit-before-reply、DELETE先/commit先各点杀进程。断言source visibility、五字段typed双向索引、retention lock、Artifact version、source-commit exact result和audit/outbox同CAS，任意时刻不存在VISIBLE source+missing ref；重复幂等逐字节重放且不重复计数。逐项拒绝旧四字段ref、path/ref tuple漂移、重复/乱序、missing/extra expected target、错误contentSha256、target-centric路径、一个target capability越权修改其他Artifact、旧version/digest及DELETING目标；ref移除只能由新sourceVersion完整commit。
 - **TEST-OBJECT-CHECKSUM-001**：客户端伪造 metadata/ETag 不能通过服务端 checksum 门禁。
 - **TEST-DR-MANIFEST-001**：Object inventory、Redis、JetStream/config/audit水位或Manifest summary DAG/archive transition不一致时不开放业务；覆盖summary node缺失/重叠range/错误indexRootDigest、archive/replay/delete journal缺口和Redis全损外部重建。
 
@@ -290,7 +297,7 @@ Artifact 域必须提供状态/字节、upload/finalize/download/delete 结果�
 6. checksum 必须来自服务端可信校验，Object Store 一致性/versioning 能力必须进入 provider fixture。
 7. 恢复使用共同 Recovery Manifest 和长期删除日志，不以单个 bucket/Redis 备份判定成功。
 8. owner tombstone 只证明历史归属；当前 Credential、Canonical Principal 与 capability 仍须全部有效。ArtifactHold/依赖索引未清零时禁止进入 DELETING。
-9. TASK/CASE/EVIDENCE source正文与typed forward/reverse ref、retention lock、Artifact version必须由同一`commit_typed_source_and_refs`线性化；source在CAS前不可见，append-only正文不得靠事后rollback修复缺ref。
+9. TASK/CASE/EVIDENCE source正文与五字段typed forward/reverse ref、retention lock、Artifact version必须由source-centric唯一入口和同一`commit_typed_source_and_refs`线性化；path source tuple进入requestDigest，old∪new Artifact expected versions恰覆盖，source在CAS前不可见，append-only正文不得靠事后rollback修复缺ref。
 
 ---
 

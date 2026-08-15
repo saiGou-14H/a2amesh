@@ -352,7 +352,7 @@ Grant 由受信配置生成并以 generation 原子替换。授权匹配必须�
 | `...:artifact:upload:<uploadId>` | HASH | artifactId,taskId,ownerPrincipalHash,tempObjectKey,expectedHash,expectedSize,status,expiresMs,idempotencyHash | 默认 24 小时 |
 | `...:artifact:uploads:due` | ZSET | member=uploadId, score=expiresMs | Reaper 清理 |
 | `...:artifact:delete:due` | ZSET | member=artifactId, score=nextAttemptMs | 删除完成后移除 |
-| `...:artifact:retention-lock:<artifactId>` | HASH | activeTaskRefs,activeCaseRefs,legalHoldIds,minimumDeleteAt,policyGeneration | 无锁不可删除 |
+| `...:artifact:retention-lock:<artifactId>` | HASH | activeTaskRefs,activeCaseRefs,activeEvidenceRefs,legalHoldIds,minimumDeleteAt,policyGeneration | 无锁不可删除 |
 
 Redis 不保存 blob、signed URL、文件内容或客户端 object key。状态机、object key、访问和保留规则以《Artifact 与对象存储设计》为唯一权威。
 
@@ -707,15 +707,16 @@ State Service内置唯一`Admission Scheduler`循环，不是任意Dispatch Work
 - 任何事件都不得把终态改回非终态；
 - 发现 JetStream 事件领先 Redis committed eventSeq 时进入一致性告警和人工恢复，不能把事件当作无条件写回权威快照的命令。
 
-### 6.11 `create_upload` / `finalize_artifact` / Artifact hold/ref / `request_artifact_delete`
+### 6.11 `create_upload` / `finalize_artifact` / Artifact hold / `commit_typed_source_and_refs` / `request_artifact_delete`
 
 - `create_upload` 原子校验 Task owner/capability、大小/MIME/配额和 active policy generation，写上传会话及 owner snapshot reference；
 - `finalize_artifact`只接受Artifact Broker已验证的object key、size、SHA-256、media type、objectVersionId和scan receipt；原子重新校验expected Task/Artifact version、Task state/cancel、owner/fencing、policy generation、retention lock，再调用同一`commit_typed_source_and_refs` helper，在一个CAS写AVAILABLE metadata、TASK source canonical snapshot、Task Artifact/forward ref、dependent reverse index、version/eventSequence、audit和outbox；对象在CAS前不可成为可见Task source，State失败只留下受控orphan；
 - completion 的 idempotency key + uploadId 重入返回原 Artifact，不重复事件；
 - `create_artifact_hold` 只允许 `ops.artifact.hold` 或受信 Reconciliation/Security service Principal；校验 expected Artifact version、ACTIVE policy、sourceCase/sourceTask 存在和 `artifactId+Idempotency-Key` requestDigest，State 分配 holdId，同一 CAS 写 append-only hold、active hold set、retention lock/legalHoldIds、Artifact version和 AuditEnvelopeV1；同 digest 返回原 hold，异 digest 409；
 - `renew_artifact_hold` 要求同 capability、expected Artifact/hold digest、ACTIVE hold；expiresMs 只能延长（legal hold 可为 null），同一幂等键相同请求返回现状。`release_artifact_hold` 只把 hold 置 RELEASED/写 releasedMs，不删记录，并在同 CAS 从 active set/retention lock 移除；过期 sweeper 使用相同 expected digest/version CAS；
-- `commit_typed_source_and_refs`只允许对应source owner或`ops.artifact.ref`，request恰为Artifact §5.5的`TypedSourceCommitRequestV1`；在一个Redis Function/CAS验证source canonical bytes/version、完整ref集合、每个Artifact non-DELETING version/状态，然后同时写source VISIBLE、`artifact:<id>:refs`、`artifact:ref-source:<type>:<id>`、active*Refs/retention lock、source-commit ledger、Artifact versions和audit/outbox。同commit/request/body逐字节返回`TypedSourceCommitResultV1`，异digest/字段/版本零写入；
-- `add_artifact_ref`只是上述helper的CREATE/APPEND source入口，不能读取一个已VISIBLE source后独立补ref；`remove_artifact_ref`必须提交source owner签名的新sourceVersion/canonical正文和完整新ref集合，由同一helper原子使旧source历史不可变、新source VISIBLE并移除对应索引。不存在ref只有在新source版本已提交时幂等返回；计数不得为负；
+- NATS唯一入口`a2a.v1.state.artifact.source.commit`只允许Artifact adapter NKey，且State仍必须校验嵌入AuthProof的TASK/CASE/EVIDENCE source owner或`ops.artifact.ref` capability；transport身份不能按某个目标Artifact替caller授权。request恰为Artifact §5.5的`TypedSourceCommitRequestV1`，sourceType/sourceId/sourceVersion必须来自source-centric HTTP path并进入requestDigest；
+- `commit_typed_source_and_refs`是唯一ref mutation writer；不存在独立增删ref或按Artifact target path的writer。Function先从source current pointer/forward set取得oldRefs，以old/new ref的artifactId并集为touched set，要求expectedArtifactVersions恰覆盖该集合；再验证source canonical bytes/version/owner、五字段ref tuple逐项绑定path且digest等于目标contentSha256、所有new Artifact non-DELETING。一个CAS写source VISIBLE/current、old/new差集的`artifact:<id>:refs`与`artifact:ref-source:<type>:<id>`、active*Refs/retention lock、每个touched Artifact恰一次version、source-commit exact result及audit/outbox；空newRefs是通过新source version移除全部引用，不是DELETE ref调用；
+- 同commitId/scope/requestDigest/exact bytes逐字节返回`TypedSourceCommitResultV1`，异digest、乱序/重复/四字段ref、path/ref漂移、expected集合少报被移除目标/多报无关目标或Artifact版本漂移均零写入。Function commit-before-reply重试不得重复Artifact version/audit/outbox；DELETE/Reaper先赢则source不可见/原version不变，source commit先赢则DELETE读取retention ref后409/423；
 - `request_artifact_delete`原子读取`artifact:<artifactId>:refs`、全部active ArtifactHold、最低保留时间和policy；有任一锁返回409/423，不改状态；无锁才把状态置为DELETING并入队，不能在对象仍存在时写DELETED。Reaper在物理删除前再次以expected Artifact version读取refs/holds；与source-commit/create-hold竞争时只有一个CAS成功，若锁先提交则删除拒绝，若DELETING先提交则后续source commit/hold拒绝且source保持不可见或必须重试到新Artifact。
 
 ### 6.12 `prepare_genesis` / `commit_genesis` / `recover_genesis` / `stage_config` / `stage_gate_evidence` / `activate_config`

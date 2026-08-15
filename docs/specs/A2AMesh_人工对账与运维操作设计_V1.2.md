@@ -310,7 +310,7 @@ WORM 受限审计必须使用《统计、审计与运行监控规则》的 canon
 
 - **TEST-RECON-CASE-001**：每个 UNKNOWN effect 原子创建唯一 case，重复回调不重复建单。
 - **TEST-RECON-CLAIM-001**：用唯一closed wire覆盖ACQUIRE/RENEW/RELEASE/EXPIRE/ESCALATE；并发双claimant只有一个成功，每次renew发更高token，release/逻辑expiry/resolve/reopen推进tombstone fence。分别在case/due/result/audit/outbox CAS前后及commit-before-reply杀进程，同operation同digest逐字节重放且revision/token/audit只变化一次，异digest或旧owner/instance/token/revision零写入；旧token即使scanner延迟也不能evidence/resolve，失联后新operator可由lazy-expire ACQUIRE或scanner EXPIRE安全接管。
-- **TEST-RECON-EVIDENCE-001**：只有允许类型、完整digest/来源/时间的证据可用于resolution，自由文本不能单独裁决；Evidence canonical正文与typed ref/retention lock必须由同一`commit_typed_source_and_refs` CAS变为VISIBLE。分别在source canonical校验、ref校验、CAS前、CAS后、State/reply丢失、与Artifact DELETE/Reaper竞争点杀进程；任一点都不得出现VISIBLE Evidence+missing reverse/forward ref，旧sourceVersion/digest/Artifact version必须拒绝，重复commit逐字节重放且不重复case index/event/audit。
+- **TEST-RECON-EVIDENCE-001**：只有允许类型、完整digest/来源/时间的证据可用于resolution，自由文本不能单独裁决；Evidence必须以`sourceType=EVIDENCE/sourceId=evidenceId`的source-centric path提交canonical正文及完整五字段refs，并由同一`commit_typed_source_and_refs` CAS与retention lock一起变为VISIBLE。正例一次引用两个Artifact并用新sourceVersion移除其一；逐项拒绝path/ref tuple漂移、四字段ref、目标content digest错误、old∪new expected versions少报/多报及按单Artifact授权跨目标修改。分别在canonical/ref校验、CAS前后、State commit-before-reply、与Artifact DELETE/Reaper竞争点杀进程；任一点不得出现VISIBLE Evidence+missing reverse/forward ref，旧sourceVersion/digest/Artifact version拒绝，重复commit逐字节重放且不重复case index/Artifact version/event/audit。
 - **TEST-RECON-RESOLVE-001**：APPLIED/FAILED/COMPENSATED 与 ledger、case、Task 聚合、audit、outbox 原子一致。
 - **TEST-RECON-IMMUTABLE-001**：已失败 Task 在任何 resolution/reopen 后仍保持原标准终态，只追加结果。
 - **TEST-RECON-IDEMP-001**：Idempotency-Key、revision 和 fencing 冲突不会产生重复 resolution/event。
