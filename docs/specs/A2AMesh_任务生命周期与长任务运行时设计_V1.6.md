@@ -151,7 +151,9 @@ class TaskSupervisor:
             claim_token=dispatch.claim_token,
             expected_payload_digest=dispatch.payload_digest,
         )
+        recovery = dispatch.dispatch_mode == "RECOVERY_RESUME"
         lease = await self.state.acquire_lease(  # 返回 provisional lease
+            operation="RECOVERY_PROVISIONAL" if recovery else "INITIAL",
             task_id=dispatch.task_id,
             target_agent_id=self.agent_id,
             supervisor_instance_id=self.instance_id,
@@ -159,13 +161,16 @@ class TaskSupervisor:
             dispatch_attempt=dispatch.dispatch_attempt,
             claim_token=dispatch.claim_token,
             command_digest=command.payload_digest,
+            recovery_operation_id=dispatch.recovery_operation_id if recovery else None,
         )
         accepted = await self.state.accept_dispatch_and_start(
+            operation="RECOVERY_RESUME" if recovery else "INITIAL_START",
             dispatch=dispatch,
             provisional_lease=lease,
             command_digest=command.payload_digest,
         )
-        # accept只把Task推进WORKING；以下观察不得spawn Runtime、创建effect或调用provider。
+        # INITIAL_START把SUBMITTED推进WORKING；RECOVERY_RESUME保持WORKING且只换owner/fence。
+        # 两者在以下观察完成前都不得spawn Runtime、创建effect或调用provider。
         observation = await self.containment_launcher.observe_without_spawn(
             execution_lease=accepted.execution_lease,
             command=command,
@@ -498,10 +503,10 @@ resolution 与 effect ledger、case、Task `reconciliationRequired` 聚合、Tas
 
 1. task heartbeat 停止，execution lease到期候选已由accept/renew CAS维护在`task:recovery:due:<targetAgentId>`；
 2. Agent presence suspect/offline；
-3. 任一新Task Supervisor实例以自身NKey周期调用`a2a.v1.state.task.recover`，只提交`targetAgentId,recoveryScanId,expectedConfigGeneration`；State按`(leaseUntilMs,taskId)`选择候选，Supervisor不保存旧进程内task列表也不能自选taskId；
+3. 任一新Task Supervisor实例以自身NKey周期调用`a2a.v1.state.task.recover`，提交exact `TaskRecoveryScanRequestV1`；State按`(leaseUntilMs,taskId)`选择候选，Supervisor不保存旧进程内task列表也不能自选taskId；
 4. State 查询side-effect ledger、Task/lease、本地恢复记录引用和provider状态；
-5. 只有全部effect为无副作用、明确`FAILED_BEFORE_CALL/NOT_APPLIED`或具有可证明的provider幂等结果时，`claim_recovery_attempt`才以稳定recoveryOperationId创建唯一新的recovery dispatch intent；不得直接对旧ACCEPTED intent获取新lease；
-6. 相同recoveryScanId重试返回原结果，新scanner即使使用新scan ID也由operation tuple去重；State提交后response丢失时已提交intent仍继续投递；
+5. 只有全部effect为无副作用、明确`FAILED_BEFORE_CALL/NOT_APPLIED`或具有可证明的provider幂等结果时，`claim_recovery_attempt`才以稳定recoveryOperationId创建唯一`dispatchMode=RECOVERY_RESUME`的新intent；该intent复用Task既有`admission=RUNNING/slotToken`，直接进入PENDING/due，不创建QUEUED/SELECTED reservation、不改变queued/reserved/running计数，也不得对旧ACCEPTED intent获取新lease；
+6. 相同recoveryScanId重试返回原结果，新scanner即使使用新scan ID也由operation tuple去重；State提交后response丢失时已提交intent仍继续投递。新Supervisor仍严格执行`command.get → acquire_lease(RECOVERY_PROVISIONAL) → dispatch.accept(RECOVERY_RESUME) → containment REGISTER/READ`；recovery accept要求Task保持WORKING、旧lease已过期、admission仍RUNNING，并只原子替换owner/attempt/fence、写`TASK_OWNER_RECOVERED`，不产生第二个`TASK_WORKING`或第二份running计数；
 7. owner已失效且存在`UNKNOWN`时Task固定进入`FAILED + reconciliation_required`，禁止自动重放；
 8. 旧owner恢复也因fencing token失效不能写。
 
@@ -602,7 +607,7 @@ Observer 默认只有 observe。干预必须：
 
 - **TEST-LONG-001 / EVT-HEARTBEAT-001**：Runtime 60 秒无 stdout 或无换行时仍每 5 秒 heartbeat，deadline/cancel 正常。
 - **TEST-STREAM-001 / EVT-PROGRESS-001**：SSE keepalive 不被误判为进度；多订阅者顺序一致，慢订阅者不拖住任务。
-- **TEST-RECOVERY-001**：SSE 断线后 GetTask/Subscribe 恢复。另在Task已WORKING后杀死当前Supervisor全部进程，等待`task:recovery:due:<agentId>`到期；新Supervisor只通过`task.recover`轮询获得由State选择的taskId并创建唯一recovery operation/dispatch。分别在recovery CAS前后及response前杀scanner；相同recoveryScanId+requestDigest逐字节返回原结果，同key异body冲突，新scanner即使使用新scan id也不得为同一过期lease再次递增attempt或创建第二intent。旧owner不能写终态，新recovery dispatch仍必须通过`command.get → provisional lease → accept`。
+- **TEST-RECOVERY-001**：SSE 断线后 GetTask/Subscribe 恢复。另在Task已WORKING后杀死当前Supervisor全部进程，等待`task:recovery:due:<agentId>`到期；新Supervisor只通过exact `TaskRecoveryScanRequestV1`获得State选择的taskId并创建唯一`RECOVERY_RESUME` operation/dispatch。分别在scan ledger、operation CAS、PENDING publish、RECOVERY_PROVISIONAL lease、RECOVERY_RESUME accept提交前后杀进程；相同recoveryScanId+requestDigest逐字节返回原结果，同key异body冲突，新scan id也不得为同一过期lease再次递增attempt或创建第二intent。断言Task始终WORKING、admission始终RUNNING、queued/reserved/running总量不变、不产生第二个`TASK_WORKING`；旧owner不能写，新owner严格通过`command.get → RECOVERY_PROVISIONAL → RECOVERY_RESUME → containment REGISTER/READ`后才启动Runtime。固定fixture `task-01/expiredFencingToken=7/fromAttempt=1`的canonical identity与recoveryOperationId必须等于Redis §6.19给定值。
 - **TEST-PUSH-001**：Push 失败不阻塞 Runtime，重复 delivery 可去重。
 - **TEST-RETRY-001**：unsafe task 崩溃不自动重跑，retry-safe attempt 使用新 fencing token。
 - **TEST-OBSERVER-001**：Observer 不处理普通 heartbeat，不响应自身事件，干预次数/冷却生效。

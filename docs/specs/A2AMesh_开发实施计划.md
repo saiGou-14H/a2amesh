@@ -722,7 +722,7 @@ C7 按目标剖面执行，不强迫 CORE 等待可选 C6：发布路径可为 `
 - NATS TLS/NKey/ACL/JetStream 持久目录；
 - Redis loopback/ACL/AOF/noeviction；
 - Gateway HTTPS；HTTP/2/gRPC 与 MCP Streamable HTTP 仅在部署目标包含对应剖面时启用；
-- State/Gateway/Peer Binding/Application Core以独立systemd服务或容器运行；启用执行/编排的节点还以不同NKey运行Task Supervisor与Orchestrator，Peer/Core只走受保护本地IPC，不能把权限并回Peer/Runtime；
+- State与Peer节点的Peer Binding/Application Core以独立systemd服务或容器运行；Peer→Core只走受保护本地IPC。Public Gateway的transport adapter与Core library固定同一受信进程/部署单元，以typed in-process interface调用，Gateway NKey零State权限、Core key handle不暴露给adapter；启用执行/编排的节点还以不同NKey运行Task Supervisor与Orchestrator，不能把权限并回Peer/Gateway/Runtime；
 - Dispatch Worker、Event Relay与Ops Recovery使用三个独立NKey/服务；Ops Recovery API仅绑定受控管理网络并只可调用`outbox.recover`，Event Relay不能继承该权限；
 - 至少两个可接管的Stream Session Controller实例和独立JS Provisioner；分别使用signed `components[]` Principal/NKey，Provisioner是唯一Consumer API身份；
 - Config Controller、签名 bundle 只读制品、信任根和受保护本地 cache；

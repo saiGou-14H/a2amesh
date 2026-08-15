@@ -248,7 +248,7 @@ PENDING / READY / DISPATCHED / RUNNING / SUCCEEDED / FAILED / CANCELED / SKIPPED
 - 保留 Artifact 来源 stepId/agentId/attempt；
 - 冲突结果不静默覆盖，生成 conflict section；
 - 大文件只聚合引用；
-- 根 Task 终态由 Application Core 写入。
+- Aggregator只产出按resultContract规范化的aggregate/Step事实，不直接写根Task终态；当前Orchestrator必须以自身Plan owner NKey调用State `a2a.v1.state.plan.transition(operation=FINALIZE_BUSINESS)`，由Redis §6.16唯一CAS同时写Plan与root Task终态。Application Core只能读取/返回该已提交终态，不存在第二个root-terminal writer。
 
 ---
 
