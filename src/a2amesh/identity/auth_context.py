@@ -2,41 +2,15 @@
 
 from __future__ import annotations
 
-import base64
-import binascii
 import json
 import time
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 
-import nacl.exceptions
-import nacl.signing
 import nkeys
 
+from .nkey import nkey_public_key, sign_nkey, verify_nkey_signature
 from .principal import Principal
-
-
-def _b64url(data: bytes) -> str:
-    return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
-
-
-def _b64url_decode(value: str) -> bytes:
-    return base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
-
-
-def _decode_nkey_public_key(public_key: str) -> nacl.signing.VerifyKey:
-    try:
-        raw = base64.b32decode(public_key.encode("ascii") + b"=" * (-len(public_key) % 8))
-    except (ValueError, binascii.Error) as exc:
-        raise ValueError("invalid NKey encoding") from exc
-    if len(raw) != 35:
-        raise ValueError("invalid NKey public-key length")
-    payload, checksum = raw[:-2], raw[-2:]
-    if nkeys.crc16(payload).to_bytes(2, "little") != checksum:
-        raise ValueError("invalid NKey checksum")
-    if not nkeys.valid_public_prefix_byte(payload[0]):
-        raise ValueError("invalid NKey public prefix")
-    return nacl.signing.VerifyKey(payload[1:])
 
 
 @dataclass(frozen=True, slots=True)
@@ -107,10 +81,11 @@ class SignerPolicy:
 
 
 def sign_auth_context(context: AuthContext, key_pair: nkeys.KeyPair) -> AuthProof:
-    public = key_pair.public_key
-    signer = public.decode("ascii") if isinstance(public, bytes) else public
-    signature = key_pair.sign(context.canonical_bytes())
-    return AuthProof(signer=signer, algorithm="nkey-ed25519", signature=_b64url(signature))
+    return AuthProof(
+        signer=nkey_public_key(key_pair),
+        algorithm="nkey-ed25519",
+        signature=sign_nkey(context.canonical_bytes(), key_pair),
+    )
 
 
 class AuthContextVerifier:
@@ -157,10 +132,13 @@ class AuthContextVerifier:
             raise ValueError("invalid AuthContext lifetime")
         if context.request_id in self._seen:
             raise ValueError("AuthContext replay detected")
-        verify_key = _decode_nkey_public_key(proof.signer)
         try:
-            verify_key.verify(context.canonical_bytes(), _b64url_decode(proof.signature))
-        except (nacl.exceptions.BadSignatureError, ValueError) as exc:
+            verify_nkey_signature(
+                proof.signer,
+                context.canonical_bytes(),
+                proof.signature,
+            )
+        except ValueError as exc:
             raise ValueError("invalid AuthContext signature") from exc
         self._seen[context.request_id] = context.expires_at
         kind = context.principal_id.split(":", 1)[0]

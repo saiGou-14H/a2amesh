@@ -8,6 +8,7 @@ from .auth_context import (
     sign_auth_context,
 )
 from .credentials import BearerCredential, CredentialStore
+from .nkey import nkey_public_key, sign_nkey, verify_nkey_signature
 from .principal import AliasRegistry, Principal, issuer_hash
 
 __all__ = [
@@ -20,5 +21,8 @@ __all__ = [
     "Principal",
     "SignerPolicy",
     "issuer_hash",
+    "nkey_public_key",
     "sign_auth_context",
+    "sign_nkey",
+    "verify_nkey_signature",
 ]
