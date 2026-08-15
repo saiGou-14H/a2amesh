@@ -161,6 +161,8 @@ class TaskSupervisor:
             dispatch_attempt=dispatch.dispatch_attempt,
             claim_token=dispatch.claim_token,
             command_digest=command.payload_digest,
+            lease_operation_id=self.derive_lease_operation_id(dispatch, recovery),
+            request_digest=self.derive_lease_request_digest(dispatch, recovery, command.payload_digest),
             recovery_operation_id=dispatch.recovery_operation_id if recovery else None,
         )
         accepted = await self.state.accept_dispatch_and_start(
