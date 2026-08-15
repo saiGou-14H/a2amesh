@@ -1,9 +1,9 @@
 # A2AMesh G0 评审台账（V1.6/V1.2）
 
 > 文档 ID：`A2AM-G0-REVIEW-20260814`
-> 状态：第一至第五轮均未通过（第五轮A/B/C FAIL，P0=0、P1=11）；第五轮阻断已在第六轮工作树候选定点修订，第六轮staged复审待执行，尚未批准
+> 状态：第一至第五轮FAIL；第六轮调度无效；第七轮FAIL；R9-F/第八轮在commit `8ed1ebb...`、tree `315c49f...`上A/B/C均FAIL（P0=0、P1=12、P2=3）；R10修订已形成分模块本地checkpoint但尚未完成全量门禁和同tree三路复审，尚未批准
 > 评审日期：2026-08-14
-> 代码基线：`d0ba51d2752feb754f6425e8f775361f3a764547`
+> 初始代码基线：`d0ba51d2752feb754f6425e8f775361f3a764547`；各轮当前候选以第4节所列commit/tree为准
 > 设计范围：`docs/specs` 的 8 份 V1.6、3 份 V1.2 专项、实施计划、综合分析、索引及 V1.6 架构图
 > 内容清单：关闭复审后生成；本台账不得自我批准
 
@@ -43,18 +43,20 @@ G0 只判定设计合同是否唯一、可实现、可测试，不判定代码�
 | 门禁 | 实际结果 | 状态 |
 |---|---|---|
 | 活动 Markdown 结构 | 14 文件；每份一个 H1；围栏闭合 | PASS（候选快照） |
-| 本地链接 | 当前候选tree共87份Markdown；markdown-it-py CommonMark口径计`link_open href` 674个本地target、4个image（共678），外链/纯fragment不计；破链0；7个archive manifest | PASS（候选快照） |
+| 本地链接 | R10-C4治理工作树共87份tracked Markdown；markdown-it-py 4.2.0/CommonMark递归`inline.children`口径计本地`link_open href` 670、image src 4、总计674；外链/纯fragment不计；破链0；7个archive manifest | PASS（R10-C4重算） |
 | 外部链接 | 当前权威集 15 个唯一 URL，HTTP 15/15 成功 | PASS（候选快照） |
-| G0/ID | G0-01～15；27个G0 TEST ID、10个DATA ID均有专项定义；候选目标87个State request literal及精确caller coverage | PASS（候选快照） |
-| Markdown 表格 | 固定范围`docs/specs/*.md`14份+根README+本台账；markdown-it-py table parser重算123+2+8=133组表格 | PASS（候选快照） |
+| G0/ID | G0-01～15；27个G0 TEST ID、10个DATA ID均有专项定义；R10目标88个唯一State request literal及精确caller coverage | PASS（R10-C4重算） |
+| Markdown 表格 | 固定范围`docs/specs/*.md`14份+根README+本台账；markdown-it-py table parser重算123+2+9=134组表格 | PASS（R10-C4重算） |
 | 版本/术语 | 规范性 A2A 声明/链接均为 v1.0.1；版本历史表保留真实 v1.0 行；活动Markdown URL无`/latest/`或旧 custom Binding文案 | PASS（候选快照） |
 | SVG/HTML | XML/HTML 可解析，内嵌 SVG 与源文件字节同源，①～⑦唯一 | PASS（候选快照） |
-| 架构图视觉 | 候选图为1800×1120；三组Runtime→private worktree箭头清晰，State→WORM捷径已移除，Workers/Relays在独立源点经底部专用走廊进入WORM，标注`AUDIT RELAY (WORKERS ONLY) → WORM`；`NO WORM PUBLISH`与`AUDIT ONLY`可读，无裁切/严重遮挡 | 已渲染并完成视觉复核：PASS |
+| 架构图视觉 | 候选图为1800×1120；三组Runtime→private worktree箭头清晰，State/Object Store→WORM捷径均已移除，Workers/Relays在独立源点经底部专用走廊进入WORM，标注`AUDIT RELAY (WORKERS ONLY) → WORM`；`NO WORM PUBLISH`与`AUDIT ONLY`可读，无裁切/严重遮挡 | 已渲染并完成视觉复核：PASS |
 | Python 编译 | 隔离候选快照执行`uv run python -m compileall -q src` | PASS |
 | 测试 | 隔离候选快照执行`uv run --extra test pytest -q -p no:cacheprovider`：46 passed，6 skipped；真实NATS安全fixture `tests/test_security.py`：6 passed | PASS（6个普通skip均为无安全环境时的条件skip，安全fixture已单独通过） |
 | 静态检查 | 隔离候选快照执行`uv run --with ruff ruff check .` | PASS |
 | CLI smoke | 隔离候选快照执行`uv run a2amesh --help`、`uv run mesh --help` | PASS |
 | Diff 格式 | `git diff --cached --check` | PASS |
+
+本节是累积门禁证据而非当前批准：设计payload截至R10-C3 clean checkpoint（commit `092fb05ae3f438d64ffb83a3417f6ca1f7891d43`、tree `8752b69a77cd9569676e207b4927e177dc0d36ea`）；本地链接、表格和State subject行又在加入本台账第八轮记录后的R10-C4治理工作树重算。compileall/pytest/Ruff/CLI等其余行仍是较早候选证据，必须在R10最终冻结tree上全部重跑，不能由本表沿用为最终证明。
 
 ## 4. 独立关闭复审
 
@@ -132,9 +134,21 @@ G0 只判定设计合同是否唯一、可实现、可测试，不判定代码�
 
 第七轮7个唯一P1及全部8个P2已在R8工作树候选中按小模块修订：Supervisor启动顺序与负例；recovery due/scanner/operation ID；Plan全业务writer；Genesis/READY/Audit/Recovery exact JWS；DEAD outbox四元比较/evidence/幂等CAS；Protected Local IPC、JS info汇总、rollout tombstone、Containment exact wire、架构图箭头/审计链及可复算治理计数。R8仍须重新冻结tree、跑完整门禁并取得A/B/C同tree PASS，修订声明本身不构成批准。
 
+### R9-F / 第八轮结果
+
+R9-F绑定commit `8ed1ebb1cd105c0b50156267c2dd3d62c9862ccb`、tree `315c49f254f4ac18bbad6ab13134a652f5dfea53`；三路均从只读Git snapshot首尾复算同一tree，明确判定域为`DESIGN_CONTRACT`且不把prototype实现缺口计为设计阻断。A/B/C均为FAIL，原始合计P0=0、P1=12、P2=3；旧tree永久保持FAIL，后续修订不反向改写。
+
+| 复审流 | 结论 | 残余阻断 |
+|---|---|---|
+| A | **FAIL（第八轮，P0=0/P1=7/P2=1）** | Task recovery/admission与stable operation wire；Plan root终态writer；Stream session持久发现/flush；Gateway/Core authority；IPC journal exact codec/replay |
+| B | **FAIL（第八轮，P0=0/P1=2/P2=0）** | Recovery compaction缺可达且fenced的writer/触发/幂等合同；架构图仍有Object Store→WORM旁路 |
+| C | **FAIL（第八轮，P0=0/P1=3/P2=2）** | production GateEvidence因果顺序；Reconciliation claim-control/due scanner；typed-source target path与ref wire冲突；台账状态及链接计数陈旧 |
+
+上述问题已进入R10分模块修订，但“局部探针通过/形成commit”不等于该轮问题已获独立关闭复审。
+
 ### 当前修订候选状态（非复审结论、非批准）
 
-后续工作树正在以历史第七轮FAIL为基线继续修订；本节只记录当前执行状态，不反向改写第一至第七轮结果，也不构成A/B/C复审。RM-A、RM-B、RM-C、RM-D已完成局部合同门禁：Protected Local IPC durable replay journal/重启reconcile与`TEST-IPC-REPLAY-001`，Config/GateEvidence General JWS `signatures[]` kid严格排序/唯一性/threshold负例，Manifest summary DAG/compaction，以及架构图独立青色`AUDIT RELAY (WORKERS ONLY) → WORM`底部专用走廊均已落地。R9-E已绑定候选tree `6cf7a26ae94155d61bf5e045827edfce693a99bf`并完成隔离compileall、pytest/Ruff/CLI、87 Markdown/链接/表格/subject union、15外链、秘密扫描、真实NATS安全fixture（6 passed）和最终视觉复核；同时修复了test extra缺少`mcp==2.0.0`导致隔离测试依赖本机环境的问题并同步`uv.lock`。当前tree仍不是批准结论；下一步是在同一最终tree上执行R9-F A/B/C独立复审，三路未全部PASS前不得改写批准记录。
+R10以第八轮FAIL为基线按可回滚小模块修订，当前已形成：R10-A `ded7bd0`（执行/recovery/Plan/Stream/Gateway-Core/IPC）、R10-B `7a86ff4`（Recovery compaction与WORM旁路）、R10-C1 `03dcd14`（production rollout evidence顺序）、R10-C2 `7d4eb71`（Recon claim-control/due scanner）、R10-C3 `092fb05`（source-centric typed refs）。各模块只通过定向合同探针并形成未标`[verified]`的本地commit；尚未在同一最终tree执行完整代码/文档/链接/视觉/真实NATS门禁，也尚未取得A/B/C独立PASS。下一步是R10全量门禁和冻结候选tree；三路未全部PASS且manifest未复验前，本节与这些checkpoint均不构成批准。
 
 ## 5. 批准记录
 
