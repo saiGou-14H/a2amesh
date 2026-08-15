@@ -811,7 +811,7 @@ C7 按目标剖面执行，不强迫 CORE 等待可选 C6：发布路径可为 `
 6. Artifact blob/metadata、active config generation、reconciliation case/effect/Task、JetStream 与 audit checkpoint 可按外部 Manifest/Verification/Restore/Approval/Release receipts 跨存储对账并在 Redis 全损后重建。
 7. 文档/代码/配置一致。
 8. 兼容声明由评审批准。
-9. `TEST-NATS-ACL-001`和`TEST-NATS-STREAM-SESSION-001`必须作为CORE必跑证据归档，报告PASS/0-skip并绑定staged bundleContentSha256+aclDigest；独立签名GateEvidenceRecordV1必须绑定报告SHA-256和当前readySetDigest，active pointer必须绑定其production-bound evidenceSha256。Peer Binding（`peer-binding`）、Application Core（`application-core`）、Task Supervisor（`task-supervisor`）、Orchestrator（`orchestrator`）、Event Relay（`event-relay`）、Ops Recovery（`ops-recovery`）、Stream Session Controller（`stream-session-controller`）、JS Provisioner（`js-provisioner`）在candidate与production gated域均以NKey互异；production READY还必须绑定同一rollout lease/fence、deployed ACL/stream/environment，缺一不得发布。
+9. `TEST-NATS-ACL-001`和`TEST-NATS-STREAM-SESSION-001`必须作为CORE必跑证据归档，报告PASS/0-skip并绑定staged bundleContentSha256+aclDigest；独立签名GateEvidenceRecordV1必须绑定报告SHA-256和当前readySetDigest，active pointer必须绑定其production-bound evidenceSha256。`RequiredSlotSetV1(profileName,bundle,deploymentDescriptor)`生成的每个stable slot必须在candidate与production gated域分别取得合法READY；运行组件NKey或descriptor-bound外部probe credential在slot间互异。production READY还必须绑定同一rollout lease/fence、deployed ACL/stream/environment，缺一不得发布。
 
 ---
 
