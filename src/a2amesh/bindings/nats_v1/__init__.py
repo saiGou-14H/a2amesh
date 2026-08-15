@@ -9,6 +9,7 @@ from .envelope import (
     BindingRequestEnvelope,
     BindingValidationError,
 )
+from .response import BindingError, BindingResponseEnvelope
 
 __all__ = [
     "A2A_PROTOCOL_VERSION",
@@ -16,6 +17,8 @@ __all__ = [
     "BINDING_URI",
     "AuthContext",
     "AuthProof",
+    "BindingError",
     "BindingRequestEnvelope",
+    "BindingResponseEnvelope",
     "BindingValidationError",
 ]

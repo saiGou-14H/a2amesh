@@ -1,0 +1,14 @@
+{
+  "a2aProtocolVersion": "1.0",
+  "bindingSchemaVersion": "1.1",
+  "bindingUri": "https://a2amesh.dev/bindings/nats/v1",
+  "configGeneration": 42,
+  "error": {
+    "message": "Task was not found or is not accessible.",
+    "retryable": false,
+    "type": "TaskNotFoundError"
+  },
+  "final": true,
+  "requestId": "req-01H-fixture",
+  "sequence": 1
+}

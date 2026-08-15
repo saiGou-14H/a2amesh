@@ -1,0 +1,46 @@
+{
+  "$id": "https://a2amesh.dev/schemas/nats-binding-response-v1.1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "bindingUri",
+    "bindingSchemaVersion",
+    "a2aProtocolVersion",
+    "requestId",
+    "configGeneration",
+    "sequence",
+    "final"
+  ],
+  "properties": {
+    "bindingUri": {"const": "https://a2amesh.dev/bindings/nats/v1"},
+    "bindingSchemaVersion": {"const": "1.1"},
+    "a2aProtocolVersion": {"const": "1.0"},
+    "requestId": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,128}$"},
+    "configGeneration": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "sequence": {"const": 1},
+    "final": {"const": true},
+    "payload": {"type": "object"},
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "message", "retryable"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_]{0,127}$"
+        },
+        "message": {"type": "string", "minLength": 1, "maxLength": 4096},
+        "retryable": {"type": "boolean"}
+      }
+    }
+  },
+  "oneOf": [
+    {"required": ["payload"], "not": {"required": ["error"]}},
+    {"required": ["error"], "not": {"required": ["payload"]}}
+  ]
+}

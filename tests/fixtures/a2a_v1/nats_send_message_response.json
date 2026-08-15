@@ -1,0 +1,18 @@
+{
+  "a2aProtocolVersion": "1.0",
+  "bindingSchemaVersion": "1.1",
+  "bindingUri": "https://a2amesh.dev/bindings/nats/v1",
+  "configGeneration": 42,
+  "final": true,
+  "payload": {
+    "task": {
+      "contextId": "ctx-01H-fixture",
+      "id": "task-01H-fixture",
+      "status": {
+        "state": "TASK_STATE_WORKING"
+      }
+    }
+  },
+  "requestId": "req-01H-fixture",
+  "sequence": 1
+}
