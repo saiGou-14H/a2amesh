@@ -172,7 +172,9 @@ V1 每套部署是一个独立 Mesh，通过 `mesh_id` 区分环境/实例，不
 | TaskSupervisor | 独立NKey并直接消费本Agent DispatchTask的当前Task owner；读取State immutable command，管理子进程、心跳、租约、恢复、取消、input/effect并经State mutation提交状态 |
 | Orchestrator | 独立NKey的Plan owner；执行Plan lease/recovery/Step编排，不持有Runtime/Tool凭据 |
 | Config Controller | 校验/暂存签名bundle，确定性生成ACL digest，并在独立签名GateEvidenceRecord绑定报告/READY后原子激活；维护单一active generation，不保存secret明文 |
-| Recovery Compactor | 独立component Principal/NKey与archive-transition signer；只经持久due/scan/source lease/fence推进archive→summary→verify→hot-delete，不与Recovery Orchestrator、State或Audit writer复用身份 |
+| Recovery Orchestrator | 独立`recovery-orchestrator` component Principal/NKey与manifest/release signer；唯一生成Manifest payload、seal和ReleaseReceipt，不与Plan Orchestrator、Verifier、Compactor或Audit writer复用身份 |
+| Recovery Verifier | 独立`recovery-verifier` component Principal/NKey与verification/restore signer；唯一递归验证Manifest/summary/archive并生成VerificationReceipt/RestoreReceipt，必须与Manifest producer不同 |
+| Recovery Compactor | 独立`recovery-compactor` component Principal/NKey与archive-transition signer；只经持久due/scan/source lease/fence推进archive→summary→verify→hot-delete，不与Recovery Orchestrator、Verifier、State或Audit writer复用身份 |
 | Object Store / Artifact Broker | 保存大型 blob，签发短期上传/下载 URL，验证完整性并异步清理 |
 | Reconciliation Service | 管理 UNKNOWN effect 的 case、证据、claim lease、resolution 和不可变审计 |
 | Observer Agent | `EXTENDED` 只分析规则筛选后的异常/里程碑 |

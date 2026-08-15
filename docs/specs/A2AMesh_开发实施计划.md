@@ -759,7 +759,7 @@ C7 按目标剖面执行，不强迫 CORE 等待可选 C6：发布路径可为 `
 - 服务重启 15 分钟、整机恢复 4 小时和整机丢失 RPO 15 分钟门禁；
 - P1 告警可送达；
 - 单 Linux SPOF 在运行手册明确。
-- candidate stage中peer-binding/application-core/task-supervisor/orchestrator/event-relay/ops-recovery/stream-session-controller/js-provisioner均以不同Principal/NKey通过自身`config.ready` overlay报告CANDIDATE READY；production promote前同一required slots必须在gated-passive生产维护域以相同身份报告`PRODUCTION_GATED` READY并绑定rollout/deployed/environment digest。缺任一、组件无法报告、plane/lease/fence/digest错误、角色ACL越权或`TEST-NATS-ACL-001`/`TEST-NATS-STREAM-SESSION-001`失败时不得激活。
+- candidate stage中peer-binding/application-core/task-supervisor/orchestrator/event-relay/ops-recovery/audit-relay/recovery-orchestrator/recovery-verifier/recovery-compactor/stream-session-controller/js-provisioner均以不同Principal/NKey通过自身`config.ready` overlay报告CANDIDATE READY；production promote前同一required slots必须在gated-passive生产维护域以相同身份报告`PRODUCTION_GATED` READY并绑定rollout/deployed/environment digest。缺任一、组件无法报告、plane/lease/fence/digest错误、角色ACL越权或`TEST-NATS-ACL-001`/`TEST-NATS-STREAM-SESSION-001`失败时不得激活。
 
 ---
 
@@ -952,7 +952,7 @@ Credential/Alias/Grant、Card publisher、delivery profile、Artifact policy、R
 → 从immutable STAGED bytes确定性render candidate NATS stream/ACL，计算aclDigest
 → 在隔离candidate broker部署同一exact bytes和专用State candidate ingress（仅READY写权威staged keys，其余门禁调用写隔离测试Redis namespace），执行TEST-NATS-ACL-001/TEST-NATS-STREAM-SESSION-001并销毁fixture namespace；生产broker仍使用active ACL
 → 在candidate网络部署Artifact/Reconciliation、Dispatch Worker、Event Relay、Ops Recovery、JS Provisioner、至少两个Stream Session Controller、Peer Binding、独立Application Core、Task Supervisor、Orchestrator和Gateway canary（不接生产流量），经candidate State ingress各自报告READY
-→ 核对peer-binding/application-core/task-supervisor/orchestrator/artifact-adapter/event-relay/ops-recovery/reconciliation-service/recovery-compactor/stream-session-controller/js-provisioner不同Principal/NKey READY、唯一Card publisher及generation一致
+→ 核对peer-binding/application-core/task-supervisor/orchestrator/artifact-adapter/event-relay/ops-recovery/reconciliation-service/recovery-orchestrator/recovery-verifier/recovery-compactor/stream-session-controller/js-provisioner不同Principal/NKey READY、唯一Card publisher及generation一致
 → 将candidate两份PASS/0-skip报告写入不可变URI，绑定staged bundleContentSha256+aclDigest+candidate environmentDigest，生成candidate GateEvidence供隔离门禁审计（不可单独授权production CAS）
 → 以已stage的candidate evidenceSha256调用`ops config rollout prepare`，只执行PREPARE并取得持久rolloutLeaseId/fence/revision；长窗口用显式`rollout renew`续租，再调用`rollout enter-maintenance`只执行ENTER_MAINTENANCE，关闭Gateway/业务State入口并排空producer（这些阶段均无未来productionEvidenceSha256）
 → 在流量仍关闭时对生产candidate config执行`nats-server -t`、reload隔离测试过的同一exact bytes并重读deployedAclDigest
