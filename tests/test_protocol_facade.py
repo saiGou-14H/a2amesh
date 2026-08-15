@@ -22,6 +22,9 @@ def test_facade_exports_official_types_by_identity() -> None:
     assert protocol.Part is official.Part
     assert protocol.Task is official.Task
     assert protocol.TaskState is official.TaskState
+    assert protocol.TaskStatusUpdateEvent is official.TaskStatusUpdateEvent
+    assert protocol.TaskArtifactUpdateEvent is official.TaskArtifactUpdateEvent
+    assert protocol.StreamResponse is official.StreamResponse
     assert protocol.SendMessageRequest is official.SendMessageRequest
 
 

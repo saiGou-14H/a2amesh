@@ -34,9 +34,11 @@ SendMessageResponse = official.SendMessageResponse
 StreamResponse = official.StreamResponse
 SubscribeToTaskRequest = official.SubscribeToTaskRequest
 Task = official.Task
+TaskArtifactUpdateEvent = official.TaskArtifactUpdateEvent
 TaskPushNotificationConfig = official.TaskPushNotificationConfig
 TaskState = official.TaskState
 TaskStatus = official.TaskStatus
+TaskStatusUpdateEvent = official.TaskStatusUpdateEvent
 
 MessageT = TypeVar("MessageT", bound=ProtobufMessage)
 

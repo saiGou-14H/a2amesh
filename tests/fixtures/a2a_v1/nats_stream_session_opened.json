@@ -1,0 +1,28 @@
+{
+  "callerDeliverySubject": "_DELIVER.a2amesh.stream.caller01.gateway-01.stream-open-01H-fixture",
+  "expiresAt": "2026-08-14T03:30:00.000Z",
+  "initialFrame": {
+    "canonicalStreamResponse": {
+      "task": {
+        "contextId": "ctx-01H-fixture",
+        "id": "task-01H-fixture",
+        "status": {
+          "state": "TASK_STATE_WORKING"
+        }
+      }
+    },
+    "eventSeq": 7,
+    "final": false,
+    "payloadDigest": "5484ab2825256ee74efefba389a0cea27b7efbb479bae0efc22796b1b12964d4",
+    "schemaVersion": "1.0",
+    "sequence": 0,
+    "streamOpenId": "stream-open-01H-fixture",
+    "streamSessionId": "session-01H-fixture"
+  },
+  "operation": "SendStreamingMessage",
+  "schemaVersion": "1.0",
+  "snapshotEventSeq": 7,
+  "streamOpenId": "stream-open-01H-fixture",
+  "streamSessionId": "session-01H-fixture",
+  "taskId": "task-01H-fixture"
+}

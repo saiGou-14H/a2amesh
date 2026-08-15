@@ -1,0 +1,7 @@
+{
+  "canonicalLength": 695,
+  "canonicalization": "RFC8785",
+  "framePayloadSha256": "5484ab2825256ee74efefba389a0cea27b7efbb479bae0efc22796b1b12964d4",
+  "openedResponseSha256": "479d0d388d6fc5fef2b6d0cfbb5f00ad439e98e23d116a04d033e8185c6847a6",
+  "sourceFixture": "nats_stream_session_opened.json"
+}
