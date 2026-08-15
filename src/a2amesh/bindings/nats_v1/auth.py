@@ -10,6 +10,7 @@ from typing import Protocol
 
 import nkeys
 import rfc8785
+from google.protobuf.json_format import SerializeToJsonError
 
 from a2amesh.identity import (
     SignerPolicy,
@@ -50,7 +51,12 @@ def canonical_signing_bytes(envelope: BindingRequestEnvelope) -> bytes:
     """RFC 8785 bytes for the envelope excluding only authProof.signature."""
     try:
         return rfc8785.dumps(envelope.signing_payload_dict())
-    except (rfc8785.CanonicalizationError, TypeError, UnicodeError) as exc:
+    except (
+        rfc8785.CanonicalizationError,
+        SerializeToJsonError,
+        TypeError,
+        UnicodeError,
+    ) as exc:
         raise BindingValidationError("envelope cannot be RFC 8785 canonicalized") from exc
 
 

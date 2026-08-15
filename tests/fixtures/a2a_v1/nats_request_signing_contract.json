@@ -1,0 +1,10 @@
+{
+  "canonicalLength": 887,
+  "canonicalization": "RFC8785",
+  "excludedFields": [
+    "authProof.signature"
+  ],
+  "hashAlgorithm": "SHA-256",
+  "sha256": "c7e06a0375341af28563f1429187d5e5bd128d65b9d21dcc5e78153e365f1748",
+  "sourceFixture": "nats_send_message_request.json"
+}

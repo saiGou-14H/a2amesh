@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+from copy import deepcopy
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import nacl.signing
 import nkeys
@@ -22,6 +24,9 @@ from a2amesh.bindings.nats_v1 import (
 from a2amesh.identity import SignerPolicy, nkey_public_key
 
 FIXTURE = Path(__file__).parent / "fixtures" / "a2a_v1" / "nats_send_message_request.json"
+SIGNING_CONTRACT = (
+    Path(__file__).parent / "fixtures" / "a2a_v1" / "nats_request_signing_contract.json"
+)
 NOW = datetime(2026, 8, 14, 3, 1, tzinfo=UTC)
 
 
@@ -225,6 +230,43 @@ async def test_expiry_future_and_lifetime_rules_are_enforced() -> None:
         await verifier.verify(too_long, **verify_kwargs(signer))
 
 
+def test_fixed_rfc8785_signing_digest_and_exact_exclusion() -> None:
+    contract = json.loads(SIGNING_CONTRACT.read_text())
+    envelope = unsigned_fixture()
+    canonical = canonical_signing_bytes(envelope)
+
+    assert len(canonical) == contract["canonicalLength"]
+    assert hashlib.sha256(canonical).hexdigest() == contract["sha256"]
+    assert contract["excludedFields"] == ["authProof.signature"]
+    assert b'"signature"' not in canonical
+    assert b'"algorithm":"nkey-ed25519"' in canonical
+    assert b'"signer":"gateway-service-nkey-public"' in canonical
+
+
+def test_changing_only_signature_preserves_canonical_bytes_but_signer_does_not() -> None:
+    key_pair = make_user_key_pair()
+    signed = sign_request_envelope(unsigned_fixture(), key_pair)
+    changed_signature = replace(
+        signed,
+        auth_proof=replace(signed.auth_proof, signature="different-signature"),
+    )
+    changed_signer = replace(
+        signed,
+        auth_proof=replace(signed.auth_proof, signer="different-signer"),
+    )
+
+    assert canonical_signing_bytes(changed_signature) == canonical_signing_bytes(signed)
+    assert canonical_signing_bytes(changed_signer) != canonical_signing_bytes(signed)
+
+
+def test_non_finite_metadata_cannot_enter_rfc8785_signature() -> None:
+    envelope = unsigned_fixture()
+    cast(Any, envelope.payload).metadata.update({"notFinite": float("nan")})
+
+    with pytest.raises(BindingValidationError, match="RFC 8785 canonicalized"):
+        canonical_signing_bytes(envelope)
+
+
 def test_signature_covers_signer_algorithm_and_every_envelope_field() -> None:
     key_pair = make_user_key_pair()
     signed = sign_request_envelope(unsigned_fixture(), key_pair)
@@ -243,9 +285,38 @@ def test_signature_covers_signer_algorithm_and_every_envelope_field() -> None:
         "replySubject": "_INBOX.a2amesh.linux-gateway.random02",
     }
     for field, value in mutations.items():
-        mutated = dict(data)
+        mutated = deepcopy(data)
         mutated[field] = value
         if field == "operation":
             mutated["payload"] = {}
         candidate = BindingRequestEnvelope.from_dict(mutated)
         assert canonical_signing_bytes(candidate) != original
+
+    nested_mutations = [
+        ("authContext", "principalId", "a2a:other"),
+        ("authContext", "credentialId", "other-credential"),
+        ("authContext", "method", "other-method"),
+        ("authContext", "issuer", "other-issuer"),
+        ("authContext", "subject", "other-subject"),
+        ("authProof", "signer", "other-signer"),
+    ]
+    for section, field, value in nested_mutations:
+        mutated = deepcopy(data)
+        mutated[section][field] = value
+        candidate = BindingRequestEnvelope.from_dict(mutated)
+        assert canonical_signing_bytes(candidate) != original
+
+    payload_mutation = deepcopy(data)
+    payload_mutation["payload"]["message"]["parts"][0]["text"] = "other text"
+    assert canonical_signing_bytes(
+        BindingRequestEnvelope.from_dict(payload_mutation)
+    ) != original
+
+    stream_one = deepcopy(data)
+    stream_one["operation"] = "SendStreamingMessage"
+    stream_one["streamOpenId"] = "stream-open-01"
+    stream_two = deepcopy(stream_one)
+    stream_two["streamOpenId"] = "stream-open-02"
+    assert canonical_signing_bytes(
+        BindingRequestEnvelope.from_dict(stream_one)
+    ) != canonical_signing_bytes(BindingRequestEnvelope.from_dict(stream_two))
