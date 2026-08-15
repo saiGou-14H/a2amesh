@@ -1,44 +1,76 @@
 # A2AMesh
 
-对称 Agent Mesh：多台异构机器的 AI Agent（Hermes / Codex / OpenCode / Claude Code）经公网 NATS 互联，任意 agent 可调度任意 agent，NAT 友好。
+对称 Agent Mesh：一台公网 Linux 与多台 NAT 后 Windows/Linux Peer 通过 NATS 互联，任意 Agent 都可调用任意 Agent；公网 Gateway 负责标准协议适配，但不是固定主 Agent 或 Mesh Leader。
 
-> **兼容性状态：** 当前代码是 A2A-inspired 的私有 NATS RPC 原型，尚未通过官方黑盒验证。当前 V1.5 主专项采用累积交付剖面：先完成 A2A JSON-RPC/SSE `CORE`，再按门禁增加 gRPC/Push `INTEROP` 与 MCP/Observer `EXTENDED`。
-
-最新可实施设计入口见 [A2AMesh 当前设计文档索引](docs/specs/README.md)，包含 11 份当前版本化专项文档及 1 份开发实施计划；已被替代的 V1.0～V1.4 专项位于 [历史归档](docs/archive/README.md)，不参与当前实现合同。
+> **当前实现状态：** private A2A-inspired NATS RPC prototype。V1.6/V1.2 是当前 G0 候选集，独立复审修复正在关闭；Canonical Core、Redis State、官方 A2A 黑盒、三机故障注入和生产门禁均未完成。不得据此声明已兼容 A2A v1 或已生产可用。
 
 ## 最新架构
 
-- **南北向：** `CORE` 经每 Agent 通配子域名提供 JSON-RPC/SSE；gRPC 和 MCP 仅在对应剖面门禁通过后启用；
-- **东西向：** Linux/Windows Peer 直接经 NATS v1 Binding 对称调用，不经过 Gateway；
-- **状态面：** State Service 独占私有 Redis，管理权威 Task 快照、幂等、lease、outbox、副作用账本、capability grant 和准入状态；
-- **事件面：** State mutation 原子写快照/outbox，Event Relay 经 PubAck 发布到 JetStream；Projector 只维护派生视图；
-- **长任务：** TaskSupervisor 独立 heartbeat/cancel，外部副作用以 `PREPARED/APPLYING/APPLIED/UNKNOWN/COMPENSATED/FAILED` 对账；
-- **Artifact：** 大型 blob 只进入私有 Object Store，完成 size/SHA-256 校验后才原子附加 Task，signed URL 不持久化；
-- **受信配置：** Credential/Alias/Grant/Card publisher/Profile/Policy 使用签名 bundle 和单一 active generation，启动与变更 fail closed；
-- **人工对账：** UNKNOWN effect 创建可认领 case，以 provider/不可变回执裁决；已失败 Task 只追加结果，不改写终态；
-- **INTEROP Push：** Push 配置写入 State Service，由独立 Push Dispatcher 消费 JetStream 并投递；
-- **EXTENDED MCP：** Peer 消费配置的 stdio/Streamable HTTP Server；公网 Linux 只暴露白名单 Mesh tools/resources；
-- **身份与授权：** 各入口共享 Identity Resolver 逻辑，把 NKey、A2A Bearer、MCP OAuth 统一为 Canonical Principal，再按目标 Agent/operation/skill/tool/workspace capability fail closed；
-- **幂等：** MCP `mesh_submit_task` 强制稳定 messageId，与 A2A 共用 Redis claim/dedupe；
-- **EXTENDED OAuth：** 外部 Authorization Server + RFC 9728/RFC 8414 + client_credentials/JWKS，故障 fail closed；
-- **边界：** Gateway 不是 Mesh Leader 或固定调度主节点，V1 不建设 tenant/RBAC；服务重启 RTO 15 分钟，整机恢复 RTO 4 小时。
+[![A2AMesh V1.6 最新架构](docs/assets/A2AMesh_V1.6_Architecture.svg)](docs/assets/A2AMesh_V1.6_Architecture.html)
 
-当前 Mermaid 拓扑和完整 ADR 见 [业务与总体架构设计 V1.5](docs/specs/A2AMesh_业务与总体架构设计_V1.5.md)。
+- [交互式架构图](docs/assets/A2AMesh_V1.6_Architecture.html)
+- [SVG 架构图](docs/assets/A2AMesh_V1.6_Architecture.svg)
+- [最新架构全量分析 V1.6](docs/specs/A2AMesh_最新架构全量分析_V1.6.md)
+- [当前权威设计索引](docs/specs/README.md)
+- [开发实施计划](docs/specs/A2AMesh_开发实施计划.md)
 
-## 快速开始
+### 架构说明
+
+- **对称调用：** Linux 和两个 NAT 后 Windows Peer 都是执行节点；Peer-to-Peer 东西向调用直接走 NATS，不必经过 Gateway。
+- **公开协议面：** `CORE` 目标提供 A2A JSON-RPC/SSE；`INTEROP` 累积增加 gRPC/Push；`EXTENDED` 在 INTEROP 之上累积增加 MCP/OAuth/Observer。
+- **Canonical Core：** 所有 Binding 复用官方 A2A 对象、11 个操作、状态机、错误和幂等语义，不允许各自实现第二套业务规则。
+- **命令可靠性：** State `claim_message` 原子创建 SUBMITTED Task、immutable command、QUEUED admission、event outbox 和 blocked dispatch；持久 DRR 选中后，Worker 用私有 `DispatchTask` 投递，Peer 通过单一 accept/start CAS 进入 WORKING。
+- **状态权威：** Redis State Service 管理 Task/Card/Principal/dedupe/lease/dispatch/outbox/effect/Plan/admission/config/reconciliation/audit/recovery 热状态；Peer 和 Projector 不反向覆盖权威快照。
+- **事件可靠性：** Event Relay 多实例使用 claim lease；同一 Task 只发布 head event，收到 JetStream PubAck 后才完成 outbox。
+- **取消语义：** Redis `cancelRequested` 是持久事实；NATS control Subject 只降低延迟，丢失后 Supervisor heartbeat/接管仍会观察取消。
+- **副作用安全：** effectIntent/effectAttempt 分离；陈旧 `APPLYING` 自动转 `UNKNOWN` 并创建唯一人工对账 case。
+- **Runtime 边界：** 只有通过签名 ContainmentProfile、OS 隔离、私有 attempt worktree、受 fence Merge Broker、egress/tool broker 和 launch attestation 的 `MEDIATED` Runtime 才能进入自动副作用路径。
+- **Artifact：** blob 只进入私有 Object Store；稳定 URI 为 `a2amesh://artifacts/<artifactId>`，signed URL 仅短期传输且不持久化。
+- **受信配置：** RFC 8785 + JWS 签名 bundle、一次性 genesis、可信 READY 和单 active generation；变更和启动 fail closed。
+- **审计与恢复：** Audit Relay 投递独立 append-only/WORM Sink；Redis、JetStream、Object Store、config、audit 由共同 Recovery Manifest 判定恢复成功。
+- **V1 边界：** 单 Mesh、单信任域、单公网 Linux SPOF；不建设 tenant、RBAC、Permission Center 或跨区域 HA。
+
+## 交付剖面
+
+| 剖面 | 目标能力 | 宣称门禁 |
+|---|---|---|
+| `CORE` | Canonical Core、Redis State、NATS Binding、JSON-RPC/SSE、长任务、Config/Artifact/Reconciliation/Audit | C0～C5（含 C2.5）+ C7/C8 CORE + 官方 JSON-RPC 黑盒 + Linux/1 NAT Peer |
+| `INTEROP` | CORE + gRPC + Push + 额外 Runtime | CORE + C6-I + C7/C8 INTEROP + 官方 gRPC stub/三机矩阵 |
+| `EXTENDED` | INTEROP + MCP/OAuth + Observer | INTEROP + C6-E + C7/C8 EXTENDED + MCP/OAuth/Observer 黑盒 |
+
+当前三个剖面均未完成发布门禁。
+
+## 当前代码与目标设计
+
+| 已有迁移输入 | 仍需完成 |
+|---|---|
+| 私有 Pydantic AgentCard/Task/Message | 官方 A2A v1 对象与 Canonical Core |
+| 私有 NATS request/reply | versioned NATS Binding、durable dispatch、ordered Event Relay |
+| Runtime/Adapter/Orchestrator 原型 | Supervisor、Plan State、DRR、workspace fencing、containment |
+| Identity/AuthContext 原语 | Redis Credential/Alias/replay 权威和多实例验证 |
+| MCP Client/有限 Server Bridge 原型 | Core/State dedupe、OAuth Resource Server 和官方黑盒 |
+
+## 快速开始（当前私有原型）
+
+以下命令仅用于当前原型开发，不代表标准 A2A V1 部署：
 
 ```bash
-pip install -e .
-a2amesh init --name win1 --nats wss://<公网IP>:4222
-a2amesh bootstrap
-a2amesh agent start
-mesh list
-mesh call win2 "执行 dir 并报告"
+uv sync
+uv run a2amesh init --name win1 --nats tls://<公网主机>:4222
+uv run a2amesh bootstrap
+# 将 bootstrap 输出的 public key 交给 NATS 管理员写入 nats.conf，
+# 配置 TLS/NKey permission 后先启动并验证 NATS Server。
+uv run a2amesh agent start --config agents.yaml
+uv run mesh list
+uv run mesh call win2 "执行 dir 并报告"
 ```
+
+正式 V1 的依赖锁定、部署和兼容门禁以[开发实施计划](docs/specs/A2AMesh_开发实施计划.md)为准。
 
 ## 目录
 
-- `src/a2amesh/` —— 核心库
+- `src/a2amesh/` —— 当前核心库与迁移输入
 - `nats/` —— NATS 配置
-- `docs/` —— 设计文档
-- `skills/` —— mesh skill（让 Hermes 当协调者）
+- `docs/specs/` —— 当前权威设计与实施计划
+- `docs/assets/` —— 最新架构图
+- `docs/archive/` —— 已替代、不可作为当前合同的历史文档

@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>A2AMesh V1.6 最新总体架构</title>
+<style>
+:root{color-scheme:dark;background:#0b0d12;color:#f5f7fb;font-family:"A2AMesh CJK","Noto Sans CJK SC","Microsoft YaHei",Inter,sans-serif}
+*{box-sizing:border-box}body{margin:0;background:#0b0d12}.bar{position:sticky;top:0;z-index:3;display:flex;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid #2d3441;background:#0f131bf2;backdrop-filter:blur(10px)}
+.bar h1{font-size:16px;margin:0 auto 0 0}.bar span{font-size:12px;color:#9ea8b8}.bar button{border:1px solid #3e4859;background:#171c26;color:#f5f7fb;border-radius:8px;padding:7px 11px;cursor:pointer}.bar button:hover{border-color:#5b8cff}.viewport{height:calc(100vh - 58px);overflow:auto;padding:18px}.stage{position:relative;width:1800px;height:1120px}.stage svg{display:block;transform-origin:0 0;transition:transform .12s ease;box-shadow:0 12px 44px #0008;border:1px solid #252c38;border-radius:14px}.note{position:fixed;right:24px;bottom:24px;max-width:390px;padding:12px 14px;background:#111620ee;border:1px solid #343c4b;border-radius:10px;color:#aab4c4;font-size:12px;line-height:1.55}.note strong{color:#f5f7fb}
+@media(max-width:760px){.bar span,.note{display:none}.viewport{padding:8px}}
+</style>
+</head>
+<body>
+<header class="bar"><h1>A2AMesh V1.6 · 最新总体架构</h1><span>G0 candidate · closure review pending · not implemented</span><button type="button" id="minus" aria-label="缩小">−</button><button type="button" id="reset" aria-label="适应宽度">适应</button><button type="button" id="plus" aria-label="放大">＋</button></header>
+<main class="viewport" id="viewport"><div class="stage" id="stage">
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1120" viewBox="0 0 1800 1120" role="img" aria-labelledby="title desc">
+  <title id="title">A2AMesh V1.6 System Architecture</title>
+  <desc id="desc">Public protocol adapters, Canonical Core, NATS and JetStream transport with separate trusted Stream Session Controller and JS Provisioner, Redis authority plane, control services, object storage, audit through Workers and Relays, and symmetric peers whose untrusted Runtime writes only a private worktree before trusted Merge Broker commits to the shared root.</desc>
+  <defs>
+    <pattern id="grid" width="28" height="28" patternUnits="userSpaceOnUse">
+      <circle cx="1" cy="1" r="1" fill="#222834"/>
+    </pattern>
+    <marker id="arrowBlue" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#5B8CFF"/></marker>
+    <marker id="arrowGreen" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#3AD29F"/></marker>
+    <marker id="arrowOrange" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#F2A65A"/></marker>
+    <marker id="arrowAudit" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#00E5FF"/></marker>
+    <marker id="arrowPurple" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#A78BFA"/></marker>
+    <style>
+      .title{font:700 31px Inter,Arial,sans-serif;fill:#F5F7FB}
+      .subtitle{font:500 15px Inter,Arial,sans-serif;fill:#9EA8B8}
+      .section{font:700 15px Inter,Arial,sans-serif;letter-spacing:1.8px;fill:#AAB4C4}
+      .label{font:700 17px Inter,Arial,sans-serif;fill:#F5F7FB}
+      .small{font:500 13px Inter,Arial,sans-serif;fill:#AAB4C4}
+      .tiny{font:600 11px Inter,Arial,sans-serif;fill:#8F99A9}
+      .chip{font:700 11px Inter,Arial,sans-serif;fill:#D9E2F2}
+      .box{fill:#131720;stroke:#343C4B;stroke-width:1.5;rx:12}
+      .boxBlue{fill:#121A2A;stroke:#5B8CFF;stroke-width:1.8;rx:12}
+      .boxGreen{fill:#10231F;stroke:#3AD29F;stroke-width:1.8;rx:12}
+      .boxOrange{fill:#241B13;stroke:#F2A65A;stroke-width:1.8;rx:12}
+      .boxPurple{fill:#1D1729;stroke:#A78BFA;stroke-width:1.8;rx:12}
+      .boundary{fill:#0F131B;stroke:#4B5567;stroke-width:1.6;stroke-dasharray:7 6;rx:18}
+      .sensitiveBoundary{fill:none;stroke:#F2A65A;stroke-width:1.2;stroke-dasharray:3 5;rx:13;opacity:.75}
+      .managementBoundary{fill:#241B13;fill-opacity:.22;stroke:#F2A65A;stroke-width:1.4;stroke-dasharray:4 4;rx:12}
+      .peer{fill:#111620;stroke:#3E4859;stroke-width:1.6;rx:16}
+      .flowBlue{fill:none;stroke:#5B8CFF;stroke-width:2.2;marker-end:url(#arrowBlue)}
+      .flowBlueNoArrow{fill:none;stroke:#5B8CFF;stroke-width:2.2}
+      .flowGreen{fill:none;stroke:#3AD29F;stroke-width:2.2;marker-end:url(#arrowGreen)}
+      .flowOrange{fill:none;stroke:#F2A65A;stroke-width:2;marker-end:url(#arrowOrange)}
+      .flowAudit{fill:none;stroke:#00E5FF;stroke-width:4;stroke-dasharray:12 6;stroke-linecap:round;marker-end:url(#arrowAudit)}
+      .auditLabel{font:700 13px Inter,Arial,sans-serif;fill:#00E5FF}
+      .flowPurple{fill:none;stroke:#A78BFA;stroke-width:2;marker-end:url(#arrowPurple)}
+      .dashed{stroke-dasharray:6 5}
+    </style>
+  </defs>
+
+  <rect width="1800" height="1120" fill="#0B0D12"/>
+  <rect width="1800" height="1120" fill="url(#grid)" opacity="0.75"/>
+
+  <text id="architecture-title" class="title" x="64" y="50">A2AMesh V1.6 · Symmetric Agent Mesh Architecture</text>
+  <text class="subtitle" x="64" y="77">G0 candidate under closure review · implementation and conformance not verified</text>
+  <rect x="1500" y="30" width="236" height="42" rx="21" fill="#10231F" stroke="#3AD29F"/>
+  <circle cx="1525" cy="51" r="6" fill="#3AD29F"/>
+  <text class="chip" x="1540" y="55">G0 CANDIDATE · NOT IMPLEMENTED</text>
+
+  <text class="section" x="64" y="112">① EXTERNAL EDGE · PUBLIC A2A/MCP · PRIVATE OPS · EXTERNAL AUTHORIZATION</text>
+
+  <g id="external-clients">
+    <rect class="box" x="64" y="130" width="245" height="68"/>
+    <circle cx="91" cy="164" r="12" fill="#5B8CFF" opacity="0.9"/>
+    <text class="label" x="112" y="159">A2A Clients</text>
+    <text class="small" x="112" y="180">SDK / browser / service</text>
+
+    <rect class="boxBlue" x="332" y="130" width="245" height="68"/>
+    <text class="label" x="356" y="159">JSON-RPC + SSE</text>
+    <text class="small" x="356" y="180">CORE · A2A v1.0.1</text>
+
+    <rect class="boxPurple" x="600" y="130" width="225" height="68"/>
+    <text class="label" x="624" y="159">gRPC + Push</text>
+    <text class="small" x="624" y="180">INTEROP profile</text>
+
+    <rect class="boxPurple" x="848" y="130" width="250" height="68"/>
+    <text class="label" x="872" y="159">MCP Bridge</text>
+    <text class="small" x="872" y="180">EXTENDED · OAuth 2.1</text>
+
+    <rect class="managementBoundary" x="1108" y="116" width="261" height="96"/>
+    <text class="tiny" x="1121" y="127">PRIVATE MANAGEMENT NETWORK</text>
+    <rect class="boxOrange" x="1121" y="130" width="235" height="68"/>
+    <text class="label" x="1145" y="159">Ops API / CLI</text>
+    <text class="small" x="1145" y="180">separate machine identity</text>
+
+    <rect class="box" x="1379" y="130" width="357" height="68"/>
+    <text class="label" x="1403" y="154">External Authorization Server</text>
+    <text class="small" x="1403" y="176">metadata · JWKS · token validation</text>
+    <text class="tiny" x="1403" y="193">the Mesh does not issue tokens</text>
+  </g>
+
+  <rect class="boundary" x="54" y="235" width="1692" height="520"/>
+  <text class="section" x="330" y="262">LINUX TRUST · PUBLIC TLS: A2A/MCP + NATS · PRIVATE OPS/SERVICES/STORES</text>
+
+  <g id="service-plane">
+    <rect class="boxBlue" x="82" y="286" width="230" height="104"/>
+    <text class="label" x="106" y="318">Gateway Adapters</text>
+    <text class="small" x="106" y="343">Host route · JSON-RPC/SSE</text>
+    <text class="small" x="106" y="364">gRPC · MCP · public Card</text>
+    <rect x="106" y="372" width="87" height="8" rx="4" fill="#5B8CFF"/>
+
+    <rect class="boxBlue" x="338" y="286" width="285" height="104"/>
+    <text class="label" x="362" y="318">Canonical A2A Core</text>
+    <text class="small" x="362" y="343">official objects · 11 operations</text>
+    <text class="small" x="362" y="364">one state machine · one error model</text>
+    <rect x="362" y="372" width="130" height="8" rx="4" fill="#5B8CFF"/>
+
+    <rect class="boxGreen" x="649" y="286" width="220" height="104"/>
+    <text class="label" x="673" y="318">Identity Resolver</text>
+    <text class="small" x="673" y="343">Bearer / NKey / OAuth</text>
+    <text class="small" x="673" y="364">Principal · alias · capability</text>
+
+    <rect class="boxOrange" x="895" y="286" width="235" height="104"/>
+    <text class="label" x="919" y="318">Config Controller</text>
+    <text class="small" x="919" y="343">JWS · READY · Gate Evidence</text>
+    <text class="small" x="919" y="364">stage → evidence → active CAS</text>
+
+    <rect class="boxOrange" x="1156" y="286" width="235" height="104"/>
+    <text class="label" x="1180" y="318">Artifact Broker</text>
+    <text class="small" x="1180" y="343">upload · checksum · ticket</text>
+    <text class="small" x="1180" y="364">finalize/delete saga</text>
+
+    <rect class="boxOrange" x="1417" y="286" width="299" height="104"/>
+    <text class="label" x="1441" y="318">Reconciliation / Ops</text>
+    <text class="small" x="1441" y="343">Evidence · claim fencing · history</text>
+    <text class="small" x="1441" y="364">stale APPLYING → UNKNOWN</text>
+  </g>
+
+  <g id="data-plane">
+    <rect class="boxBlue" x="82" y="435" width="250" height="120"/>
+    <text class="label" x="106" y="469">NATS + JetStream</text>
+    <text class="small" x="106" y="495">⑤ transport · fixed event stream</text>
+    <text class="tiny" x="106" y="518">no ticket authority / app logic</text>
+    <rect x="106" y="529" width="180" height="9" rx="4.5" fill="#5B8CFF"/>
+
+    <rect class="boxOrange" x="350" y="435" width="250" height="120"/>
+    <text class="label" x="374" y="469">JS Provisioner</text>
+    <text class="small" x="374" y="495">State ticket claim / complete</text>
+    <text class="tiny" x="374" y="518">only fixed Stream / Consumer API</text>
+    <rect x="374" y="529" width="180" height="9" rx="4.5" fill="#F2A65A"/>
+
+    <rect class="boxOrange" x="618" y="435" width="250" height="120"/>
+    <text class="label" x="642" y="469">Stream Controller</text>
+    <text class="small" x="642" y="495">State fence · frame / ACK</text>
+    <text class="tiny" x="642" y="518">no direct $JS.API.* privilege</text>
+    <rect x="642" y="529" width="180" height="9" rx="4.5" fill="#F2A65A"/>
+
+    <rect class="boxGreen" x="886" y="435" width="250" height="120"/>
+    <text class="label" x="910" y="469">State Service</text>
+    <text class="small" x="910" y="495">② ticket · epoch · CAS · fencing</text>
+    <text class="tiny" x="910" y="518">Task · Plan · config · recovery</text>
+    <text class="tiny" x="910" y="550">NO WORM PUBLISH</text>
+    <rect x="910" y="529" width="180" height="9" rx="4.5" fill="#3AD29F"/>
+
+    <rect class="boxGreen" x="1154" y="435" width="270" height="120"/>
+    <text class="label" x="1178" y="469">Workers / Relays</text>
+    <text class="small" x="1178" y="495">③ Dispatch · Event · Audit</text>
+    <text class="tiny" x="1178" y="518">ordered outbox · PubAck · sweepers</text>
+    <rect x="1178" y="529" width="190" height="9" rx="4.5" fill="#3AD29F"/>
+
+    <rect class="box" x="1442" y="435" width="274" height="120"/>
+    <text class="label" x="1466" y="469">Observability</text>
+    <text class="small" x="1466" y="495">Metrics · Trace · Health</text>
+    <text class="tiny" x="1466" y="518">fixed labels · P1 Runbooks · no CoT</text>
+  </g>
+
+  <rect class="sensitiveBoundary" x="68" y="588" width="1664" height="142"/>
+  <g id="storage-plane">
+    <rect class="boxGreen" x="82" y="604" width="330" height="105"/>
+    <text class="label" x="106" y="637">Redis State Plane</text>
+    <text class="small" x="106" y="662">Task · dispatch · outbox · replay</text>
+    <text class="small" x="106" y="683">effect · Plan · config · case · manifest</text>
+
+    <rect class="boxOrange" x="438" y="604" width="270" height="105"/>
+    <text class="label" x="462" y="637">Private Object Store</text>
+    <text class="small" x="462" y="662">⑥ Artifact blob authority</text>
+    <text class="small" x="462" y="683">versioning · inventory · tombstone</text>
+
+    <rect class="boxOrange" x="734" y="604" width="270" height="105"/>
+    <text class="label" x="758" y="637">WORM Audit Sink</text>
+    <text class="small" x="758" y="662">append-only · deterministic ID</text>
+    <text class="small" x="758" y="683">sealed segments · cross-day hash chain</text>
+    <text class="tiny" x="758" y="700" fill="#00E5FF">AUDIT ONLY · relay receipt required</text>
+
+    <rect class="boxOrange" x="1030" y="604" width="330" height="105"/>
+    <text class="label" x="1054" y="637">Recovery Manifest</text>
+    <text class="small" x="1054" y="662">⑦ Redis · JS · Object · config · audit</text>
+    <text class="small" x="1054" y="683">signed WORM manifest · verify · dual release</text>
+
+    <rect class="box" x="1386" y="604" width="330" height="105"/>
+    <text class="label" x="1410" y="637">Trust Root / Secret Store</text>
+    <text class="small" x="1410" y="662">NKey seeds · JWS roots · provider keys</text>
+    <text class="small" x="1410" y="683">references only in signed bundle</text>
+  </g>
+
+  <!-- external routing -->
+  <path class="flowBlue" d="M309 164 H332"/>
+  <path class="flowBlue" d="M455 198 V210 H140 V286"/>
+  <path class="flowBlue" d="M712 198 V218 H197 V286"/>
+  <path class="flowBlue" d="M973 198 V226 H254 V286"/>
+  <path class="flowOrange" d="M1238 198 V238 H1500 V272 H1012 V286"/>
+  <path class="flowOrange" d="M1238 238 H1566 V286"/>
+  <path class="flowGreen dashed" d="M1557 130 V96 H1103 V220 H1143 V400 H759 V390"/>
+
+  <!-- service/data routing -->
+  <path class="flowBlue" d="M312 338 H338"/>
+  <path class="flowGreen" d="M623 338 H649"/>
+  <path class="flowGreen" d="M481 390 V400 H1011 V435"/>
+  <path class="flowGreen" d="M886 518 V568 H207 V555"/>
+
+  <path class="flowGreen" d="M1136 494 H1154"/>
+  <path class="flowBlue" d="M1170 555 V562 H207 V555"/>
+  <path class="flowGreen" d="M868 480 H886"/>
+  <path class="flowOrange" d="M618 500 H600"/>
+  <path class="flowOrange" d="M350 520 H332"/>
+  <path class="flowOrange" d="M1274 390 V397 H1433 V568 H1345 V604"/>
+  <path class="flowOrange" d="M1566 390 V398 H1011 V435"/>
+  <path class="flowOrange" d="M1012 390 V435"/>
+  <path class="flowOrange" d="M1274 390 V396 H1429 V570 H415 V601 H573 V604"/>
+  <circle cx="1365" cy="545" r="5" fill="#00E5FF" stroke="#071014" stroke-width="2"/>
+  <path class="flowAudit" d="M1365 545 H1375 V718 H850 V709"/>
+  <rect x="1035" y="734" width="360" height="27" rx="5" fill="#101C22" stroke="#00E5FF" stroke-width="1.5"/>
+  <text class="auditLabel" x="1046" y="753">AUDIT RELAY (WORKERS ONLY) → WORM</text>
+  <path class="flowOrange" d="M1289 555 V568 H1180 V604"/>
+  <path class="flowOrange dashed" d="M1551 604 V568 H1437 V398 H1012 V390"/>
+  <path class="flowGreen dashed" d="M412 656 H438"/>
+  <path class="flowGreen dashed" d="M708 656 H734"/>
+  <path class="flowGreen dashed" d="M1004 656 H1030"/>
+
+  <!-- Keep boundary and flow labels readable above crossing lines. -->
+  <rect x="320" y="241" width="1100" height="30" rx="5" fill="#0F131B"/>
+  <text class="section" x="330" y="262">LINUX TRUST · PUBLIC TLS: A2A/MCP + NATS · PRIVATE OPS/SERVICES/STORES</text>
+
+  <text class="tiny" x="1055" y="726">SENSITIVE STORAGE / RECOVERY ZONE · LOOPBACK OR PRIVATE NETWORK · SEPARATE SERVICE CREDENTIALS</text>
+
+  <text class="section" x="64" y="790">SYMMETRIC PEERS · TRUSTED AGENT/BROKERS · UNTRUSTED RUNTIME SANDBOX · OUTBOUND NATS</text>
+  <text class="tiny" x="570" y="768">④ Peer-initiated outbound TLS · bidirectional custom Binding messages · no inbound Windows listener</text>
+
+  <g id="peer-windows-a">
+    <rect class="peer" x="64" y="812" width="515" height="224"/>
+    <circle cx="91" cy="839" r="7" fill="#5B8CFF"/>
+    <text class="label" x="108" y="845">Windows Peer A · NAT network 1</text>
+    <rect class="boxBlue" x="88" y="867" width="74" height="63"/>
+    <text class="small" x="98" y="893">Peer</text><text class="tiny" x="98" y="914">NKey</text>
+    <rect class="boxGreen" x="170" y="867" width="80" height="63"/>
+    <text class="small" x="180" y="893">App Core</text><text class="tiny" x="180" y="914">Task NKey</text>
+    <rect class="boxGreen" x="258" y="867" width="88" height="63"/>
+    <text class="small" x="268" y="893">Supervisor</text><text class="tiny" x="268" y="914">Task owner</text>
+    <rect class="boxGreen" x="354" y="867" width="102" height="63"/>
+    <text class="small" x="364" y="893">Orchestrator</text><text class="tiny" x="364" y="914">Plan owner</text>
+    <rect class="boxPurple" x="464" y="867" width="90" height="63" stroke-dasharray="5 3"/>
+    <text class="small" x="474" y="893">Runtime</text><text class="tiny" x="474" y="914">UNTRUSTED</text>
+    <rect class="boxOrange" x="88" y="950" width="466" height="62"/>
+    <path class="flowPurple" d="M509 930 V942 H159 V960"/>
+    <rect class="boxPurple" x="100" y="960" width="118" height="28" stroke-dasharray="4 3"/><text class="tiny" x="110" y="978">private worktree</text>
+    <path class="flowOrange" d="M218 974 H242"/><rect class="boxGreen" x="242" y="960" width="132" height="28"/><text class="tiny" x="268" y="978">Merge Broker</text>
+    <path class="flowOrange" d="M374 974 H398"/><rect class="boxOrange" x="398" y="960" width="144" height="28"/><text class="tiny" x="410" y="978">shared root</text>
+    <text class="tiny" x="106" y="1004">Trusted Tool / SideEffect / Artifact brokers · Runtime has no root ACL</text>
+  </g>
+
+  <g id="peer-windows-b">
+    <rect class="peer" x="642" y="812" width="515" height="224"/>
+    <circle cx="669" cy="839" r="7" fill="#5B8CFF"/>
+    <text class="label" x="686" y="845">Windows Peer B · NAT network 2</text>
+    <rect class="boxBlue" x="666" y="867" width="74" height="63"/>
+    <text class="small" x="676" y="893">Peer</text><text class="tiny" x="676" y="914">NKey</text>
+    <rect class="boxGreen" x="748" y="867" width="80" height="63"/>
+    <text class="small" x="758" y="893">App Core</text><text class="tiny" x="758" y="914">Task NKey</text>
+    <rect class="boxGreen" x="836" y="867" width="88" height="63"/>
+    <text class="small" x="846" y="893">Supervisor</text><text class="tiny" x="846" y="914">Task owner</text>
+    <rect class="boxGreen" x="932" y="867" width="102" height="63"/>
+    <text class="small" x="942" y="893">Orchestrator</text><text class="tiny" x="942" y="914">Plan owner</text>
+    <rect class="boxPurple" x="1042" y="867" width="90" height="63" stroke-dasharray="5 3"/>
+    <text class="small" x="1052" y="893">Runtime</text><text class="tiny" x="1052" y="914">UNTRUSTED</text>
+    <rect class="boxOrange" x="666" y="950" width="466" height="62"/>
+    <path class="flowPurple" d="M1087 930 V942 H737 V960"/>
+    <rect class="boxPurple" x="678" y="960" width="118" height="28" stroke-dasharray="4 3"/><text class="tiny" x="688" y="978">private worktree</text>
+    <path class="flowOrange" d="M796 974 H820"/><rect class="boxGreen" x="820" y="960" width="132" height="28"/><text class="tiny" x="846" y="978">Merge Broker</text>
+    <path class="flowOrange" d="M952 974 H976"/><rect class="boxOrange" x="976" y="960" width="144" height="28"/><text class="tiny" x="988" y="978">shared root</text>
+    <text class="tiny" x="684" y="1004">Trusted Tool / SideEffect / Artifact brokers · Runtime has no root ACL</text>
+  </g>
+
+  <g id="peer-linux">
+    <rect class="peer" x="1220" y="812" width="516" height="224"/>
+    <circle cx="1247" cy="839" r="7" fill="#3AD29F"/>
+    <text class="label" x="1264" y="845">Linux Peer · symmetric local Agent</text>
+    <rect class="boxBlue" x="1244" y="867" width="74" height="63"/>
+    <text class="small" x="1254" y="893">Peer</text><text class="tiny" x="1254" y="914">NKey</text>
+    <rect class="boxGreen" x="1326" y="867" width="80" height="63"/>
+    <text class="small" x="1336" y="893">App Core</text><text class="tiny" x="1336" y="914">Task NKey</text>
+    <rect class="boxGreen" x="1414" y="867" width="88" height="63"/>
+    <text class="small" x="1424" y="893">Supervisor</text><text class="tiny" x="1424" y="914">Task owner</text>
+    <rect class="boxGreen" x="1510" y="867" width="102" height="63"/>
+    <text class="small" x="1520" y="893">Orchestrator</text><text class="tiny" x="1520" y="914">Plan owner</text>
+    <rect class="boxPurple" x="1620" y="867" width="91" height="63" stroke-dasharray="5 3"/>
+    <text class="small" x="1630" y="893">Runtime</text><text class="tiny" x="1630" y="914">UNTRUSTED</text>
+    <rect class="boxOrange" x="1244" y="950" width="467" height="62"/>
+    <path class="flowPurple" d="M1665 930 V942 H1315 V960"/>
+    <rect class="boxPurple" x="1256" y="960" width="118" height="28" stroke-dasharray="4 3"/><text class="tiny" x="1266" y="978">private worktree</text>
+    <path class="flowOrange" d="M1374 974 H1398"/><rect class="boxGreen" x="1398" y="960" width="132" height="28"/><text class="tiny" x="1424" y="978">Merge Broker</text>
+    <path class="flowOrange" d="M1530 974 H1554"/><rect class="boxOrange" x="1554" y="960" width="144" height="28"/><text class="tiny" x="1566" y="978">shared root</text>
+    <text class="tiny" x="1262" y="1004">Trusted Tool / SideEffect / Artifact brokers · Runtime has no root ACL</text>
+  </g>
+
+  <!-- Peers initiate outbound TLS; after connection establishment, messaging is bidirectional. -->
+  <path class="flowBlueNoArrow" d="M88 898 H75 V805 H45"/>
+  <path class="flowBlueNoArrow" d="M666 898 H653 V805 H45"/>
+  <path class="flowBlueNoArrow" d="M1244 898 H1231 V805 H45"/>
+  <path class="flowBlue" d="M45 805 V495 H82"/>
+
+  <rect x="54" y="1062" width="1692" height="1" fill="#2D3441"/>
+  <circle cx="75" cy="1089" r="6" fill="#5B8CFF"/><text class="small" x="90" y="1094">command / protocol</text>
+  <circle cx="270" cy="1089" r="6" fill="#3AD29F"/><text class="small" x="285" y="1094">state / durable delivery</text>
+  <circle cx="510" cy="1089" r="6" fill="#F2A65A"/><text class="small" x="525" y="1094">control / effect / storage</text>
+  <circle cx="790" cy="1089" r="6" fill="#A78BFA"/><text class="small" x="805" y="1094">untrusted runtime/worktree</text>
+  <path d="M1010 1089 H1048" fill="none" stroke="#F2A65A" stroke-width="2" stroke-dasharray="6 5"/>
+  <text class="tiny" x="1058" y="1094">dashed = control / recovery</text>
+  <text class="tiny" x="1275" y="1094">Authority Redis · Blob Object Store · Audit WORM · Transport NATS/JS</text>
+</svg>
+
+
+
+
+
+
+</div></main>
+<aside class="note"><strong>阅读重点</strong><br>公网仅暴露 A2A/MCP HTTPS 与 NATS TLS/WSS；Ops 只走私有管理网。外部 AS 仅提供 metadata/JWKS/token validation。Peer 内 Runtime 是不受信 sandbox，只能写 private worktree；共享根仅 Trusted Merge Broker 可提交。</aside>
+<script>
+(()=>{const W=1800,H=1120,s=document.getElementById('stage'),v=document.getElementById('viewport'),svg=s.querySelector('svg'),r=document.getElementById('reset');let manual=null,current=1;const fit=()=>{const c=getComputedStyle(v),available=v.clientWidth-parseFloat(c.paddingLeft)-parseFloat(c.paddingRight)-2;return Math.min(1,Math.max(.15,available/W))};function draw(){current=manual===null?fit():manual;svg.style.transform=`scale(${current})`;s.style.width=`${W*current}px`;s.style.height=`${H*current}px`;r.textContent=manual===null?'适应':Math.round(current*100)+'%'}document.getElementById('minus').onclick=()=>{manual=Math.max(.15,current-.1);draw()};document.getElementById('plus').onclick=()=>{manual=Math.min(2,current+.1);draw()};r.onclick=()=>{manual=null;draw()};window.addEventListener('resize',()=>{if(manual===null)draw()});draw()})();
+</script>
+</body></html>

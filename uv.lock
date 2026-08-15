@@ -65,6 +65,7 @@ state = [
 ]
 test = [
     { name = "httpx" },
+    { name = "mcp" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
 ]
@@ -76,6 +77,7 @@ requires-dist = [
     { name = "httpx", marker = "extra == 'test'", specifier = ">=0.27.0" },
     { name = "jsonschema", specifier = ">=4.21.0" },
     { name = "mcp", marker = "extra == 'mcp'", specifier = "==2.0.0" },
+    { name = "mcp", marker = "extra == 'test'", specifier = "==2.0.0" },
     { name = "nats-py", specifier = ">=2.6.0" },
     { name = "nkeys", specifier = ">=0.2.1" },
     { name = "pydantic", specifier = ">=2.6.0" },
