@@ -40,6 +40,14 @@ from .stream_control_envelope import (
     StreamControlEnvelopeV1,
     sign_stream_control_envelope,
 )
+from .transport import (
+    BindingRemoteError,
+    BindingTransportError,
+    NatsCallerIdentity,
+    NatsCallerIdentityResolver,
+    V1NatsClient,
+    V1NatsServer,
+)
 
 __all__ = [
     "A2A_PROTOCOL_VERSION",
@@ -50,9 +58,13 @@ __all__ = [
     "AuthProof",
     "BindingAuthVerifier",
     "BindingError",
+    "BindingRemoteError",
     "BindingRequestEnvelope",
     "BindingResponseEnvelope",
+    "BindingTransportError",
     "BindingValidationError",
+    "NatsCallerIdentity",
+    "NatsCallerIdentityResolver",
     "RequestReplayGuard",
     "StreamAckRequestV1",
     "StreamCloseRequestV1",
@@ -68,6 +80,8 @@ __all__ = [
     "StreamSessionFrameV1",
     "StreamSessionOpenedV1",
     "StreamSessionState",
+    "V1NatsClient",
+    "V1NatsServer",
     "VerifiedBindingIdentity",
     "canonical_signing_bytes",
     "compute_stream_open_request_digest",
