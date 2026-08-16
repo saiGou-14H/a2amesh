@@ -117,7 +117,13 @@ async def cmd_agent(args) -> None:
     cfg = Config.load(args.config)
     rt = AgentRuntime(cfg)
     await rt.start()
-    print(f"agent '{cfg.agent.name}' 已启动，监听 a2a.rpc.{cfg.agent.name}")
+    if cfg.compatibility.legacy_private_rpc_enabled:
+        print(f"agent '{cfg.agent.name}' 已启动，监听 legacy a2a.rpc.{cfg.agent.name}")
+    else:
+        print(
+            f"agent '{cfg.agent.name}' 已启动；legacy private RPC disabled，"
+            "未订阅 a2a.rpc/a2a.cards"
+        )
     try:
         await asyncio.Event().wait()  # 常驻
     finally:
@@ -131,7 +137,13 @@ async def cmd_orchestrator(args) -> None:
     cfg = Config.load(args.config)
     rt = OrchestratorRuntime(cfg)
     await rt.start()
-    print("orchestrator 已启动，监听 a2a.rpc.orchestrator")
+    if cfg.compatibility.legacy_private_rpc_enabled:
+        print("orchestrator 已启动，监听 legacy a2a.rpc.orchestrator")
+    else:
+        print(
+            "orchestrator 已启动；legacy private RPC disabled，"
+            "未订阅 a2a.rpc/a2a.cards"
+        )
     try:
         await asyncio.Event().wait()
     finally:
@@ -155,6 +167,9 @@ agent:
   task_timeout_seconds: 600
 
 mcp: []
+
+compatibility:
+  legacy_private_rpc_enabled: false
 
 observability:
   otlp_endpoint: ""

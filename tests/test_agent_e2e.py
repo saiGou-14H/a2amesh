@@ -19,6 +19,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 async def main():
     cfg = Config.model_validate({
         "nats": {"url": NATS_URL, "nkey_seed_env": "A2AMESH_NKEY_SEED"},
+        "compatibility": {"legacy_private_rpc_enabled": True},
         "agent": {"name": "win1", "description": "e2e test agent",
                   "default_runtime": "hermes", "workdir": str(REPO_ROOT),
                   "runtimes": ["hermes"], "tools_dir": "./nonexistent",
@@ -30,7 +31,7 @@ async def main():
     await asyncio.sleep(0.8)  # 等服务注册 + 卡片发布
 
     nc = await nats.connect(NATS_URL)
-    client = MeshClient(nc)
+    client = MeshClient(nc, enabled=True)
 
     # 1. get_card：卡片含 hermes 运行时 + builtin 工具
     card = await client.get_card("win1")

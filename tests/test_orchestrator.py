@@ -59,8 +59,8 @@ class FakePlanner:
 async def main():
     nc = await nats.connect(NATS_URL)
     h1, h2 = EchoHandler("worker1"), EchoHandler("worker2")
-    s1 = MeshServer(nc, "worker1", h1)
-    s2 = MeshServer(nc, "worker2", h2)
+    s1 = MeshServer(nc, "worker1", h1, enabled=True)
+    s2 = MeshServer(nc, "worker2", h2, enabled=True)
     await s1.start()
     await s2.start()
 
@@ -70,7 +70,7 @@ async def main():
         Step(id="s2", target="worker2", prompt="B"),
         Step(id="s3", target="worker1", prompt="C", depends_on=["s1", "s2"]),
     ])
-    orch = Orchestrator(MeshClient(nc), FakePlanner(plan))
+    orch = Orchestrator(MeshClient(nc, enabled=True), FakePlanner(plan))
     task = await orch.handle("demo")
 
     assert task.status.state == "completed", task
@@ -84,10 +84,13 @@ async def main():
 
     # 失败重试：前 2 次失败，第 3 次成功
     h3 = EchoHandler("flaky", fail_first=2)
-    s3 = MeshServer(nc, "flaky", h3)
+    s3 = MeshServer(nc, "flaky", h3, enabled=True)
     await s3.start()
     plan2 = Plan(task_id="plan-2", steps=[Step(id="s1", target="flaky", prompt="retry me")])
-    task2 = await Orchestrator(MeshClient(nc), FakePlanner(plan2)).handle("retry demo")
+    task2 = await Orchestrator(
+        MeshClient(nc, enabled=True),
+        FakePlanner(plan2),
+    ).handle("retry demo")
     assert task2.status.state == "completed", task2
     assert h3.calls == 3, h3.calls
     print(f"✅ 失败重试: flaky 前 2 次失败、第 3 次成功（共 {h3.calls} 次，指数退避）")

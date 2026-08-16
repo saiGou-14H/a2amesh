@@ -49,6 +49,7 @@ def make_config(name: str = "audit") -> Config:
     return Config.model_validate(
         {
             "nats": {"url": NATS_URL, "nkey_seed_env": "A2AMESH_UNUSED_SEED"},
+            "compatibility": {"legacy_private_rpc_enabled": True},
             "agent": {
                 "name": name,
                 "description": "audit agent",
@@ -103,7 +104,7 @@ async def test_message_send_creates_queryable_task_and_cancel_terminates_running
     runtime = AgentRuntime(cfg, adapters={"hermes": SlowAdapter()})
     await runtime.start()
     caller = await nats.connect(NATS_URL)
-    client = MeshClient(caller)
+    client = MeshClient(caller, enabled=True)
     task_id = "cancel-me"
     try:
         invocation = asyncio.create_task(
@@ -265,7 +266,7 @@ async def test_remote_tools_require_explicit_public_allowlist():
     runtime = AgentRuntime(cfg, adapters={"hermes": SlowAdapter()})
     await runtime.start()
     caller = await nats.connect(NATS_URL)
-    client = MeshClient(caller)
+    client = MeshClient(caller, enabled=True)
     try:
         result = await client.call_tool("audit-tools", "list_dir", {"path": "."})
         assert "entries" in result

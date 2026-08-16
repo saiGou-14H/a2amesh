@@ -39,14 +39,17 @@ def main(argv=None) -> int:
 
 
 async def dispatch(args):
-    from a2amesh.a2anats.client import MeshClient
+    from a2amesh.a2anats.compatibility import LegacyMeshClientAdapter
     from a2amesh.config import Config
     from a2amesh.connect import connect
     from a2amesh.contracts.models import Message, TextPart
 
     cfg = Config.load(args.config)
     nc = await connect(cfg)
-    client = MeshClient(nc)
+    client = LegacyMeshClientAdapter(
+        nc,
+        enabled=cfg.compatibility.legacy_private_rpc_enabled,
+    )
     try:
         if args.cmd == "list":
             agents = await client.discover()

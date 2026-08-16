@@ -1,5 +1,6 @@
 """A2A-over-NATS transport helpers and explicit legacy compatibility policy."""
 
+from .compatibility import LegacyMeshClientAdapter, LegacyMeshServerAdapter
 from .compatibility_policy import (
     LEGACY_CARD_SUBJECT_PREFIX,
     LEGACY_PRIVATE_RPC_METHODS,
@@ -14,4 +15,6 @@ __all__ = [
     "LEGACY_RPC_SUBJECT_PREFIX",
     "LegacyCompatibilityDisabledError",
     "LegacyCompatibilityPolicy",
+    "LegacyMeshClientAdapter",
+    "LegacyMeshServerAdapter",
 ]

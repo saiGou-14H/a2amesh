@@ -11,14 +11,16 @@ from pathlib import Path
 from uuid import uuid4
 
 import nats
-from a2amesh.a2anats.client import MeshClient
+from a2amesh.a2anats.compatibility import (
+    LegacyMeshClientAdapter,
+    LegacyMeshServerAdapter,
+)
 from a2amesh.a2anats.errors import (
     FORBIDDEN,
     INVALID_PARAMS,
     UNAVAILABLE,
     JsonRpcError,
 )
-from a2amesh.a2anats.server import MeshServer
 from a2amesh.config import Config
 from a2amesh.contracts.models import (
     AgentCard,
@@ -45,8 +47,8 @@ class AgentRuntime:
         self.nc: nats.NATS | None = None
         self.tools = ToolRegistry()
         self.executor: Executor | None = None
-        self.server: MeshServer | None = None
-        self.client: MeshClient | None = None
+        self.server: LegacyMeshServerAdapter | None = None
+        self.client: LegacyMeshClientAdapter | None = None
         self.memory: MemoryStore | None = None
         self._tasks: dict[str, Task] = {}
         self._cancels: dict[str, asyncio.Event] = {}
@@ -90,9 +92,16 @@ class AgentRuntime:
         public = set(self.cfg.agent.public_tools)
         for tool in self.tools._tools.values():
             tool.public = tool.name in public
-        self.server = MeshServer(self.nc, self.cfg.agent.name, handler=self)
-        self.client = MeshClient(self.nc)
-        await self.server.start()
+        legacy_enabled = self.cfg.compatibility.legacy_private_rpc_enabled
+        self.server = LegacyMeshServerAdapter(
+            self.nc,
+            self.cfg.agent.name,
+            handler=self,
+            enabled=legacy_enabled,
+        )
+        self.client = LegacyMeshClientAdapter(self.nc, enabled=legacy_enabled)
+        if legacy_enabled:
+            await self.server.start()
 
     # ---- AgentCard ----
 
@@ -468,8 +477,8 @@ class AgentRuntime:
         for task in list(self._inflight.values()):
             if not task.done():
                 task.cancel()
-        if self.server and self.server._service:
-            await self.server._service.stop()
+        if self.server is not None:
+            await self.server.close()
         await self.tools.close()
         if self.nc and not self.nc.is_closed:
             await self.nc.close()

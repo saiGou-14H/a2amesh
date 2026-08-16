@@ -32,6 +32,7 @@ class SlowEchoAdapter(AgentAdapter):
 async def main():
     cfg = Config.model_validate({
         "nats": {"url": NATS_URL, "nkey_seed_env": "A2AMESH_NKEY_SEED"},
+        "compatibility": {"legacy_private_rpc_enabled": True},
         "agent": {"name": "win1", "description": "stream test",
                   "default_runtime": "hermes", "workdir": None,
                   "runtimes": ["hermes"], "tools_dir": "./nonexistent"},
@@ -42,7 +43,7 @@ async def main():
     await asyncio.sleep(0.5)
 
     nc = await nats.connect(NATS_URL)
-    client = MeshClient(nc)
+    client = MeshClient(nc, enabled=True)
 
     task_id, events = await client.send_message_stream(
         "win1", Message(role="user", parts=[TextPart(text="hi")]), runtime="hermes")

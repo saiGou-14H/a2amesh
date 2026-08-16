@@ -7,14 +7,16 @@ import os
 from uuid import uuid4
 
 import nats
-from a2amesh.a2anats.client import MeshClient
+from a2amesh.a2anats.compatibility import (
+    LegacyMeshClientAdapter,
+    LegacyMeshServerAdapter,
+)
 from a2amesh.a2anats.errors import (
     INVALID_PARAMS,
     METHOD_NOT_FOUND,
     UNAVAILABLE,
     JsonRpcError,
 )
-from a2amesh.a2anats.server import MeshServer
 from a2amesh.config import Config
 from a2amesh.contracts.models import (
     AgentCard,
@@ -33,7 +35,7 @@ from .planner import Planner
 
 
 class Orchestrator:
-    def __init__(self, client: MeshClient, planner, dispatcher=None, aggregator=None):
+    def __init__(self, client: LegacyMeshClientAdapter, planner, dispatcher=None, aggregator=None):
         self.client = client
         self.planner = planner
         self.dispatcher = dispatcher or Dispatcher(client)
@@ -68,7 +70,8 @@ class OrchestratorRuntime:
         if seed:
             kwargs["nkeys_seed_str"] = seed
         self.nc = await nats.connect(self.cfg.nats.url, **kwargs)
-        self.client = MeshClient(self.nc)
+        legacy_enabled = self.cfg.compatibility.legacy_private_rpc_enabled
+        self.client = LegacyMeshClientAdapter(self.nc, enabled=legacy_enabled)
         if self._planner_override is not None:
             planner = self._planner_override
         else:
@@ -77,8 +80,14 @@ class OrchestratorRuntime:
                                 timeout=self.cfg.agent.task_timeout_seconds)
             planner = Planner(executor)
         self.orch = Orchestrator(self.client, planner)
-        self.server = MeshServer(self.nc, "orchestrator", handler=self)
-        await self.server.start()
+        self.server = LegacyMeshServerAdapter(
+            self.nc,
+            "orchestrator",
+            handler=self,
+            enabled=legacy_enabled,
+        )
+        if legacy_enabled:
+            await self.server.start()
 
     def card(self) -> AgentCard:
         return AgentCard(

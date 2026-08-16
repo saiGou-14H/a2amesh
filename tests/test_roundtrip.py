@@ -50,12 +50,12 @@ class FakeHandler:
 async def test_roundtrip():
     # agent_b 作为服务端
     nc_b = await nats.connect(NATS_URL)
-    server_b = MeshServer(nc_b, "agent_b", FakeHandler("agent_b"))
+    server_b = MeshServer(nc_b, "agent_b", FakeHandler("agent_b"), enabled=True)
     await server_b.start()
 
     # agent_a 作为客户端
     nc_a = await nats.connect(NATS_URL)
-    client = MeshClient(nc_a)
+    client = MeshClient(nc_a, enabled=True)
 
     task = await client.send_message(
         "agent_b", Message(role="user", parts=[TextPart(text="hello world")]))

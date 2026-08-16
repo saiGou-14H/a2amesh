@@ -35,6 +35,7 @@ def make_config(tmp_path: Path, name: str = "audit") -> Config:
     return Config.model_validate(
         {
             "nats": {"url": "nats://127.0.0.1:4222"},
+            "compatibility": {"legacy_private_rpc_enabled": True},
             "agent": {
                 "name": name,
                 "default_runtime": "hermes",
@@ -67,7 +68,7 @@ class RetryNC:
 @pytest.mark.asyncio
 async def test_send_retry_reuses_a_non_null_task_id():
     nc = RetryNC()
-    task = await MeshClient(nc).send_message(
+    task = await MeshClient(nc, enabled=True).send_message(
         "worker", Message(role="user", parts=[TextPart(text="hello")])
     )
     ids = [request["params"]["metadata"]["taskId"] for request in nc.requests]
@@ -89,7 +90,11 @@ class AlwaysTimeoutNC:
 async def test_non_idempotent_tool_call_is_not_retried():
     nc = AlwaysTimeoutNC()
     with pytest.raises(TimeoutError):
-        await MeshClient(nc).call_tool("worker", "write_file", {"path": "x", "content": "y"})
+        await MeshClient(nc, enabled=True).call_tool(
+            "worker",
+            "write_file",
+            {"path": "x", "content": "y"},
+        )
     assert nc.calls == 1
 
 
@@ -148,7 +153,7 @@ class PrivateStreamNC:
 @pytest.mark.asyncio
 async def test_streaming_uses_private_request_inbox_not_public_stream_subject():
     nc = PrivateStreamNC()
-    task_id, events = await MeshClient(nc).send_message_stream(
+    task_id, events = await MeshClient(nc, enabled=True).send_message_stream(
         "worker",
         Message(role="user", parts=[TextPart(text="hello")]),
         task_id="stream-task",
@@ -455,7 +460,7 @@ class ErrorHandler:
 
 @pytest.mark.asyncio
 async def test_server_unknown_method_and_internal_error_mapping():
-    server = MeshServer(SimpleNamespace(), "x", ErrorHandler())
+    server = MeshServer(SimpleNamespace(), "x", ErrorHandler(), enabled=True)
     unknown = FakeMsg({"jsonrpc": "2.0", "id": "1", "method": "bogus/do", "params": {}})
     await server._on_rpc(unknown)
     assert unknown.responses[0]["error"]["code"] == METHOD_NOT_FOUND

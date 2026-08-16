@@ -329,7 +329,7 @@ JSON-RPC 与 gRPC 都把下列 11 个操作交给同一 Core。gRPC 使用官方
 | API-A2A-010 | DeleteTaskPushNotificationConfig | `a2a.v1.state.push.config(operation=DELETE)` | State，幂等 |
 | API-A2A-011 | GetExtendedAgentCard | 同名 | State/Card Service |
 
-禁止混用 v0.3 `message/send`、`message/stream`、`tasks/get`、`tasks/resubscribe` 作为 v1 wire method。迁移期旧入口只能放在明确标记的 compatibility adapter 中，默认关闭。
+禁止混用 v0.3 `message/send`、`message/stream`、`tasks/get`、`tasks/resubscribe` 作为 v1 wire method。迁移期旧入口只能放在明确标记的 compatibility adapter 中，默认关闭。实现层唯一显式开关为 `compatibility.legacy_private_rpc_enabled=true`；字段缺失或 `false` 时不得订阅 `a2a.rpc.*`/`a2a.cards.*`，所有旧调用必须在任何 NATS I/O 前失败。该开关只允许严格布尔值，不得接受 truthy 字符串/数字，不得由 v1 超时、无 responder、Schema/AuthProof 错误触发自动降级；旧适配器也不得发布或订阅 `a2a.v1.*`。
 
 ---
 
