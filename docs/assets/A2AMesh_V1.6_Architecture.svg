@@ -173,11 +173,15 @@
 
     <g id="artifact-hold-reaper" data-role="artifact-hold-reaper" data-principal="component:artifact-hold-reaper" data-nkey="nkey:artifact-hold-reaper" data-operations="SCAN|EXPIRE|REPLAY_CLAIM" data-provider-delete-credential="false">
       <rect class="boxOrange" x="1290" y="435" width="146" height="120"/>
-      <text class="small" x="1302" y="466">Artifact Hold</text>
-      <text class="label" x="1302" y="489">Reaper</text>
-      <text class="tiny" x="1302" y="513">SCAN · EXPIRE</text>
-      <text class="tiny" x="1302" y="533">REPLAY_CLAIM</text>
-      <text class="tiny" x="1302" y="550">no Object Store cred</text>
+      <text class="small" x="1302" y="460">Artifact Hold</text>
+      <text class="label" x="1302" y="482">Reaper</text>
+      <text class="tiny" x="1302" y="504">SCAN · EXPIRE</text>
+      <text class="tiny" x="1302" y="522">REPLAY_CLAIM</text>
+      <g id="artifact-hold-edge-label" data-edge-for="artifact-reaper-to-state">
+        <rect x="1296" y="528" width="134" height="17" rx="4" fill="#101C22" stroke="#F2A65A" stroke-width="1"/>
+        <text class="micro" x="1302" y="540">HOLD CAS ONLY → STATE</text>
+      </g>
+      <text class="tiny" x="1302" y="552">no Object Store cred</text>
     </g>
 
     <rect class="box" x="1450" y="435" width="266" height="120"/>
@@ -267,11 +271,6 @@
     <rect x="680" y="559" width="178" height="17" rx="4" fill="#1F151A" stroke="#FF6B6B" stroke-width="1"/>
     <text class="deleteLabel" x="688" y="571">DELETE COMPLETE → BLOB</text>
   </g>
-  <g id="artifact-hold-edge-label" data-edge-for="artifact-reaper-to-state">
-    <rect x="1160" y="414" width="172" height="17" rx="4" fill="#101C22" stroke="#F2A65A" stroke-width="1"/>
-    <text class="micro" x="1168" y="426">HOLD CAS ONLY → STATE</text>
-  </g>
-
   <g id="artifact-hold-cas-contract" data-role="artifact-hold-cas-contract" data-authority="state-service">
     <rect x="1450" y="400" width="266" height="31" rx="6" fill="#101C22" stroke="#F2A65A" stroke-width="1.4"/>
     <text class="chip" x="1460" y="410">ARTIFACT HOLD · SINGLE-CAS SNAPSHOT</text>
