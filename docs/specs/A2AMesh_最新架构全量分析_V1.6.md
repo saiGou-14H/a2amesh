@@ -3,9 +3,9 @@
 > 文档ID：`A2AM-REVIEW-001`
 > 文档状态：G0 候选综合分析；非专项权威，不覆盖 11 份领域合同
 > 权威范围：仅综合解释当前设计集、G0 证据、实现差距和路线图；领域规则仍以 11 份专项为准
-> 评审状态：结构与链接自检通过；首轮独立复审未通过，问题修复后关闭复审待完成
+> 评审状态：G0候选；结构与链接自检通过，本轮Config/Artifact纯状态合同及架构图同步后待新generation独立复审
 > 分析日期：2026-08-14
-> 最后更新：2026-08-14
+> 最后更新：2026-08-16
 > 分析范围：当前 8 份 V1.6、3 份 V1.2 专项、开发实施计划及仓库现状
 > 首次版本：V1.6
 > 实现结论：设计候选正在关闭复审；代码仍为 private A2A-inspired NATS prototype，未达到 CORE 交付门禁
@@ -78,6 +78,8 @@
 - Runtime/Tool 只有在被证明无法绕过 broker 时才能进入 MEDIATED 副作用路径。
 
 [查看最新架构图](../assets/A2AMesh_V1.6_Architecture.html) · [SVG](../assets/A2AMesh_V1.6_Architecture.svg)
+
+架构图显式区分**目标部署能力**与**当前可执行证据**：`RequiredSlotSetV1`和`ArtifactHoldExpiryCASState`已形成确定性纯状态合同；图中的Redis Function/Lua、真实NATS handler/AuthProof、持久化、多进程故障注入及生产一致性仍是目标能力，不得由纯合同测试推导为已实现。
 
 ### 3.1 五层逻辑模型
 
@@ -225,6 +227,8 @@ create upload session
 
 稳定身份是 `a2amesh://artifacts/<artifactId>`，不是 signed URL。Redis 与 Object Store 不伪装成跨系统事务：允许可对账 orphan，不允许 Task 引用未验证 blob。finalize/Task terminal/delete/download-ticket 通过 Task/Artifact version 和 fencing 线性化。
 
+有限期hold由独立Artifact Hold Reaper经closed `SCAN|EXPIRE|REPLAY_CLAIM`调用State。当前`ArtifactHoldExpiryCASState`已可执行验证全局candidate authority、`ACTIVE→CONSUMED` tombstone、`ACTIVE→EXPIRED`、immutable commit以及audit/outbox一一对应的单CAS write-set；terminal higher-fence replay必须先由唯一claim writer持久化exact claim request/result和current-authority，令`baseCommitDigest`逐字节绑定基准commit、`authorizedCandidateDigest`绑定原consumed candidate，并签发未消费且lease有效的新candidate。未过期current claim阻止新claim ID，higher claim持久化后所有低fence及原commit authority永久superseded，不能靠裸整数变大取得权限。它仍不是Redis Function、真实NATS ingress或Object Store删除集成。物理删除继续只属于使用不同Principal/NKey及provider credential的Artifact Delete Worker。
+
 ### 4.6 受信配置
 
 ```text
@@ -240,6 +244,8 @@ create upload session
 ```
 
 首次部署使用一次性genesis：只有空State、未使用nonce、双人批准签名时可激活g1；Gateway/Runtime/Artifact/dispatch在g1 ACTIVE前关闭。普通generation的bundle只声明requiredGateTestIds，报告只绑定已stage的bundle/ACL，GateEvidenceRecord在报告之后签发，因此没有bundle↔report摘要环。滚动窗口只允许旧实例完成固化in-flight，不形成两个可接收新操作的active generation。
+
+当前`config_slots.py`已可执行验证`RequiredSlotSetV1(profileName,bundle,deploymentDescriptor)`的稳定投影、全局Principal/NKey隔离、READY覆盖及recovery投影一致性；它不等于Config Controller、signed READY/NACK ingress、GateEvidence持久化或active pointer Redis CAS已经实现。
 
 ### 4.7 共同灾难恢复
 
@@ -386,6 +392,8 @@ V1 不建设用户/RBAC，但保留部署级 capability：Principal、target Age
 - Runtime Executor 和多个 CLI Adapter 原型；
 - Planner/Dispatcher/Tracker/Aggregator 基础代码；
 - Identity/Credential/Alias/AuthContext 原语及测试；
+- `config_slots.py`中的确定性`RequiredSlotSetV1`投影、全局身份隔离与recovery投影纯合同；
+- `state_contracts/artifact_hold.py`中的严格SCAN/EXPIRE/REPLAY_CLAIM wire、candidate authority ledger、CONSUMED tombstone、commit-bound replay claim及单CAS write-set纯合同；
 - MCP Client 与有限 MCP Server Bridge 原型。
 
 当前关键缺口：
@@ -394,13 +402,13 @@ V1 不建设用户/RBAC，但保留部署级 capability：Principal、target Age
 2. Redis State Service 和全部原子 Key/函数；
 3. durable dispatch、ordered outbox、Event Relay；
 4. distributed replay、lease/fencing、Plan/workspace；
-5. Config/Artifact/Reconciliation/Audit/Recovery C2.5；
+5. Config/Artifact纯合同到Redis/NATS/持久化集成，以及Reconciliation/Audit/Recovery C2.5；
 6. Peer Binding/Application Core/TaskSupervisor/Orchestrator独立Principal与ACL，以及真实Runtime containment；
 7. JSON-RPC/SSE Gateway 与官方黑盒；
 8. gRPC/Push、MCP OAuth/Observer 独立门禁；
 9. 三机故障注入和生产部署证据。
 
-特别说明：当前 `identity/auth_context.py` 的 replay 是进程内 `_seen`，当前 `mcp_bridge/server.py` 的 submission dedupe 也是进程内映射；它们是迁移输入，不满足多实例 State 权威合同。
+特别说明：当前 `identity/auth_context.py` 的 replay 是进程内 `_seen`，当前 `mcp_bridge/server.py` 的 submission dedupe 也是进程内映射；它们是迁移输入，不满足多实例 State 权威合同。`RequiredSlotSetV1`和`ArtifactHoldExpiryCASState`虽有可执行测试，但只证明确定性纯状态语义，不能作为Redis/NATS部署、持久化或生产就绪证据。
 
 ---
 

@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1120" viewBox="0 0 1800 1120" role="img" aria-labelledby="title desc">
   <title id="title">A2AMesh V1.6 System Architecture</title>
-  <desc id="desc">Public protocol adapters, Canonical Core, NATS and JetStream transport with separate trusted Stream Session Controller and JS Provisioner, Redis authority plane, control services, object storage, audit through Workers and Relays, and symmetric peers whose untrusted Runtime writes only a private worktree before trusted Merge Broker commits to the shared root.</desc>
+  <desc id="desc">A2AMesh target architecture with public protocol adapters, Canonical Core, NATS and JetStream transport, Redis authority, Config RequiredSlotSetV1, Artifact Hold single-CAS expiry, Workers-only audit relay, object storage, recovery roles, and symmetric peers whose untrusted Runtime writes only a private worktree before trusted Merge Broker commits to the shared root. Current executable evidence is limited to deterministic Config and Artifact pure-state contracts; Redis Function, NATS handler, persistence, and production conformance remain unverified.</desc>
   <defs>
     <pattern id="grid" width="28" height="28" patternUnits="userSpaceOnUse">
       <circle cx="1" cy="1" r="1" fill="#222834"/>
@@ -8,6 +8,7 @@
     <marker id="arrowBlue" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#5B8CFF"/></marker>
     <marker id="arrowGreen" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#3AD29F"/></marker>
     <marker id="arrowOrange" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#F2A65A"/></marker>
+    <marker id="arrowDelete" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#FF6B6B"/></marker>
     <marker id="arrowAudit" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#00E5FF"/></marker>
     <marker id="arrowPurple" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#A78BFA"/></marker>
     <style>
@@ -31,8 +32,11 @@
       .flowBlueNoArrow{fill:none;stroke:#5B8CFF;stroke-width:2.2}
       .flowGreen{fill:none;stroke:#3AD29F;stroke-width:2.2;marker-end:url(#arrowGreen)}
       .flowOrange{fill:none;stroke:#F2A65A;stroke-width:2;marker-end:url(#arrowOrange)}
+      .flowDelete{fill:none;stroke:#FF6B6B;stroke-width:3;marker-end:url(#arrowDelete)}
       .flowAudit{fill:none;stroke:#00E5FF;stroke-width:4;stroke-dasharray:12 6;stroke-linecap:round;marker-end:url(#arrowAudit)}
       .auditLabel{font:700 13px Inter,Arial,sans-serif;fill:#00E5FF}
+      .micro{font:600 9px Inter,Arial,sans-serif;fill:#AAB4C4}
+      .deleteLabel{font:700 9px Inter,Arial,sans-serif;fill:#FFB4B4}
       .flowPurple{fill:none;stroke:#A78BFA;stroke-width:2;marker-end:url(#arrowPurple)}
       .dashed{stroke-dasharray:6 5}
     </style>
@@ -42,10 +46,10 @@
   <rect width="1800" height="1120" fill="url(#grid)" opacity="0.75"/>
 
   <text id="architecture-title" class="title" x="64" y="50">A2AMesh V1.6 · Symmetric Agent Mesh Architecture</text>
-  <text class="subtitle" x="64" y="77">G0 candidate under closure review · implementation and conformance not verified</text>
-  <rect x="1500" y="30" width="236" height="42" rx="21" fill="#10231F" stroke="#3AD29F"/>
-  <circle cx="1525" cy="51" r="6" fill="#3AD29F"/>
-  <text class="chip" x="1540" y="55">G0 CANDIDATE · NOT IMPLEMENTED</text>
+  <text class="subtitle" x="64" y="77">G0 candidate · Config/Artifact pure contracts executable · Redis/NATS production integration unverified</text>
+  <rect x="1448" y="30" width="288" height="42" rx="21" fill="#10231F" stroke="#3AD29F"/>
+  <circle cx="1473" cy="51" r="6" fill="#3AD29F"/>
+  <text class="chip" x="1488" y="55">G0 CANDIDATE · PARTIAL PURE CONTRACTS</text>
 
   <text class="section" x="64" y="112">① EXTERNAL EDGE · PUBLIC A2A/MCP · PRIVATE OPS · EXTERNAL AUTHORIZATION</text>
 
@@ -100,20 +104,35 @@
     <text class="small" x="673" y="343">Bearer / NKey / OAuth</text>
     <text class="small" x="673" y="364">Principal · alias · capability</text>
 
-    <rect class="boxOrange" x="895" y="286" width="235" height="104"/>
-    <text class="label" x="919" y="318">Config Controller</text>
-    <text class="small" x="919" y="343">JWS · READY · Gate Evidence</text>
-    <text class="small" x="919" y="364">stage → evidence → active CAS</text>
+    <g id="config-controller">
+      <rect class="boxOrange" x="895" y="286" width="235" height="104"/>
+      <text class="label" x="919" y="318">Config Controller</text>
+      <text class="small" x="919" y="343">RequiredSlotSetV1 · READY/NACK</text>
+      <text class="small" x="919" y="364">JWS · GateEvidence · active CAS</text>
+    </g>
 
-    <rect class="boxOrange" x="1156" y="286" width="235" height="104"/>
-    <text class="label" x="1180" y="318">Artifact Broker</text>
-    <text class="small" x="1180" y="343">upload · checksum · ticket</text>
-    <text class="small" x="1180" y="364">finalize/delete saga</text>
+    <g id="artifact-adapter" data-role="artifact-adapter" data-principal="component:artifact-adapter" data-nkey="nkey:artifact-adapter" data-operations="REQUEST" data-provider-delete-credential="false">
+      <rect class="boxOrange" x="1156" y="286" width="120" height="104"/>
+      <text class="small" x="1168" y="314">Artifact</text>
+      <text class="label" x="1168" y="336">Adapter</text>
+      <text class="tiny" x="1168" y="358">REQUEST only</text>
+      <text class="tiny" x="1168" y="376">no delete credential</text>
+    </g>
 
-    <rect class="boxOrange" x="1417" y="286" width="299" height="104"/>
-    <text class="label" x="1441" y="318">Reconciliation / Ops</text>
-    <text class="small" x="1441" y="343">Evidence · claim fencing · history</text>
-    <text class="small" x="1441" y="364">stale APPLYING → UNKNOWN</text>
+    <g id="artifact-delete-worker" data-role="artifact-delete-worker" data-principal="component:artifact-delete-worker" data-nkey="nkey:artifact-delete-worker" data-operations="COMPLETE" data-provider-delete-credential="true">
+      <rect class="boxOrange" x="1288" y="286" width="132" height="104"/>
+      <text class="small" x="1300" y="314">Artifact</text>
+      <text class="small" x="1300" y="336">Delete Worker</text>
+      <text class="tiny" x="1300" y="358">COMPLETE only</text>
+      <text class="tiny" x="1300" y="376">provider delete cred</text>
+    </g>
+
+    <g id="reconciliation-ops">
+      <rect class="boxOrange" x="1430" y="286" width="286" height="104"/>
+      <text class="label" x="1454" y="318">Reconciliation / Ops</text>
+      <text class="small" x="1454" y="343">Evidence · claim fencing · history</text>
+      <text class="small" x="1454" y="364">stale APPLYING → UNKNOWN</text>
+    </g>
   </g>
 
   <g id="data-plane">
@@ -135,48 +154,69 @@
     <text class="tiny" x="642" y="518">no direct $JS.API.* privilege</text>
     <rect x="642" y="529" width="180" height="9" rx="4.5" fill="#F2A65A"/>
 
-    <rect class="boxGreen" x="886" y="435" width="250" height="120"/>
-    <text class="label" x="910" y="469">State Service</text>
-    <text class="small" x="910" y="495">② ticket · epoch · CAS · fencing</text>
-    <text class="tiny" x="910" y="518">Task · Plan · config · recovery</text>
-    <text class="tiny" x="910" y="550">NO WORM PUBLISH</text>
-    <rect x="910" y="529" width="180" height="9" rx="4.5" fill="#3AD29F"/>
+    <g id="state-service">
+      <rect class="boxGreen" x="886" y="435" width="250" height="120"/>
+      <text class="label" x="910" y="469">State Service</text>
+      <text class="small" x="910" y="495">② ticket · epoch · CAS · fencing</text>
+      <text class="tiny" x="910" y="518">Task · Plan · config · Artifact CAS</text>
+      <text class="tiny" x="910" y="550">NO WORM PUBLISH</text>
+      <rect x="910" y="529" width="180" height="9" rx="4.5" fill="#3AD29F"/>
+    </g>
 
-    <rect class="boxGreen" x="1154" y="435" width="270" height="120"/>
-    <text class="label" x="1178" y="469">Workers / Relays</text>
-    <text class="small" x="1178" y="495">③ Dispatch · Event · Audit</text>
-    <text class="tiny" x="1178" y="518">ordered outbox · PubAck · sweepers</text>
-    <rect x="1178" y="529" width="190" height="9" rx="4.5" fill="#3AD29F"/>
+    <g id="workers">
+      <rect class="boxGreen" x="1154" y="435" width="128" height="120"/>
+      <text class="label" x="1166" y="469">Workers</text>
+      <text class="tiny" x="1166" y="495">Dispatch · Event</text>
+      <text class="tiny" x="1166" y="516">Audit Relay</text>
+      <rect x="1166" y="529" width="92" height="9" rx="4.5" fill="#3AD29F"/>
+    </g>
 
-    <rect class="box" x="1442" y="435" width="274" height="120"/>
-    <text class="label" x="1466" y="469">Observability</text>
-    <text class="small" x="1466" y="495">Metrics · Trace · Health</text>
-    <text class="tiny" x="1466" y="518">fixed labels · P1 Runbooks · no CoT</text>
+    <g id="artifact-hold-reaper" data-role="artifact-hold-reaper" data-principal="component:artifact-hold-reaper" data-nkey="nkey:artifact-hold-reaper" data-operations="SCAN|EXPIRE|REPLAY_CLAIM" data-provider-delete-credential="false">
+      <rect class="boxOrange" x="1290" y="435" width="146" height="120"/>
+      <text class="small" x="1302" y="466">Artifact Hold</text>
+      <text class="label" x="1302" y="489">Reaper</text>
+      <text class="tiny" x="1302" y="513">SCAN · EXPIRE</text>
+      <text class="tiny" x="1302" y="533">REPLAY_CLAIM</text>
+      <text class="tiny" x="1302" y="550">no Object Store cred</text>
+    </g>
+
+    <rect class="box" x="1450" y="435" width="266" height="120"/>
+    <text class="label" x="1474" y="469">Observability</text>
+    <text class="small" x="1474" y="495">Metrics · Trace · Health</text>
+    <text class="tiny" x="1474" y="518">fixed labels · P1 Runbooks · no CoT</text>
   </g>
 
   <rect class="sensitiveBoundary" x="68" y="588" width="1664" height="142"/>
   <g id="storage-plane">
-    <rect class="boxGreen" x="82" y="604" width="330" height="105"/>
-    <text class="label" x="106" y="637">Redis State Plane</text>
-    <text class="small" x="106" y="662">Task · dispatch · outbox · replay</text>
-    <text class="small" x="106" y="683">effect · Plan · config · case · manifest</text>
+    <g id="redis-state-plane">
+      <rect class="boxGreen" x="82" y="604" width="330" height="105"/>
+      <text class="label" x="106" y="637">Redis State Plane</text>
+      <text class="small" x="106" y="662">Task · Plan · config · outbox · replay</text>
+      <text class="small" x="106" y="683">Artifact candidate ledger · commit · tombstone</text>
+    </g>
 
-    <rect class="boxOrange" x="438" y="604" width="270" height="105"/>
-    <text class="label" x="462" y="637">Private Object Store</text>
-    <text class="small" x="462" y="662">⑥ Artifact blob authority</text>
-    <text class="small" x="462" y="683">versioning · inventory · tombstone</text>
+    <g id="object-store">
+      <rect class="boxOrange" x="438" y="604" width="270" height="105"/>
+      <text class="label" x="462" y="637">Private Object Store</text>
+      <text class="small" x="462" y="662">⑥ Artifact blob authority</text>
+      <text class="small" x="462" y="683">versioning · inventory · tombstone</text>
+    </g>
 
-    <rect class="boxOrange" x="734" y="604" width="270" height="105"/>
-    <text class="label" x="758" y="637">WORM Audit Sink</text>
-    <text class="small" x="758" y="662">append-only · deterministic ID</text>
-    <text class="small" x="758" y="683">sealed segments · cross-day hash chain</text>
-    <text class="tiny" x="758" y="700" fill="#00E5FF">AUDIT ONLY · relay receipt required</text>
+    <g id="worm-audit-sink">
+      <rect class="boxOrange" x="734" y="604" width="270" height="105"/>
+      <text class="label" x="758" y="637">WORM Audit Sink</text>
+      <text class="small" x="758" y="662">append-only · deterministic ID</text>
+      <text class="small" x="758" y="683">sealed segments · cross-day hash chain</text>
+      <text class="tiny" x="758" y="700" fill="#00E5FF">AUDIT ONLY · relay receipt required</text>
+    </g>
 
-    <rect class="boxOrange" x="1030" y="604" width="330" height="105"/>
-    <text class="label" x="1054" y="632">Recovery Roles + Manifest</text>
-    <text class="small" x="1054" y="654">Orchestrator · Verifier · Compactor</text>
-    <text class="tiny" x="1054" y="675">separate Principal / NKey · fenced writers</text>
-    <text class="tiny" x="1054" y="696">signed WORM manifest · dual release</text>
+    <g id="recovery-roles">
+      <rect class="boxOrange" x="1030" y="604" width="330" height="105"/>
+      <text class="label" x="1054" y="632">Recovery Roles + Manifest</text>
+      <text class="small" x="1054" y="654">Orchestrator · Verifier · Compactor</text>
+      <text class="tiny" x="1054" y="675">separate Principal / NKey · fenced writers</text>
+      <text class="tiny" x="1054" y="696">signed WORM manifest · dual release</text>
+    </g>
 
     <rect class="box" x="1386" y="604" width="330" height="105"/>
     <text class="label" x="1410" y="637">Trust Root / Secret Store</text>
@@ -204,25 +244,52 @@
   <path class="flowGreen" d="M868 480 H886"/>
   <path class="flowOrange" d="M618 500 H600"/>
   <path class="flowOrange" d="M350 520 H332"/>
-  <path class="flowOrange" d="M1274 390 V397 H1433 V568 H1345 V604"/>
-  <path class="flowOrange" d="M1566 390 V398 H1011 V435"/>
-  <path class="flowOrange" d="M1012 390 V435"/>
-  <path class="flowOrange" d="M1274 390 V396 H1429 V570 H415 V601 H573 V604"/>
-  <circle cx="1365" cy="545" r="5" fill="#00E5FF" stroke="#071014" stroke-width="2"/>
-  <path class="flowAudit" d="M1365 545 H1375 V718 H850 V709"/>
-  <rect x="1035" y="734" width="360" height="27" rx="5" fill="#101C22" stroke="#00E5FF" stroke-width="1.5"/>
-  <text class="auditLabel" x="1046" y="753">AUDIT RELAY (WORKERS ONLY) → WORM</text>
+  <path id="config-controller-to-state" class="flowOrange" data-source="config-controller" data-target="state-service" d="M1012 390 V435"/>
+  <path id="reconciliation-to-state" class="flowOrange" data-source="reconciliation-ops" data-target="state-service" d="M1566 390 V396 H1436 V434 H1136 V435"/>
+  <path id="artifact-adapter-to-recovery" class="flowOrange" data-source="artifact-adapter" data-target="recovery-roles" data-permission="REQUEST · audit/recovery evidence" d="M1274 390 V397 H1433 V568 H1345 V604"/>
+  <path id="artifact-reaper-to-state" class="flowOrange" data-source="artifact-hold-reaper" data-target="state-service" data-permission="SCAN|EXPIRE|REPLAY_CLAIM · no provider credential" d="M1357 435 V425 H1144 V495 H1136"/>
+  <path id="artifact-adapter-to-object-store" class="flowOrange" data-source="artifact-adapter" data-target="object-store" data-permission="REQUEST · upload/finalize" d="M1216 390 V418 H609 V590 H573 V604"/>
+  <path id="artifact-delete-worker-to-object-store" class="flowDelete" data-source="artifact-delete-worker" data-target="object-store" data-permission="COMPLETE · provider physical delete" d="M1348 390 V406 H877 V580 H660 V604"/>
+  <path id="state-redis-authority" class="flowGreen" data-source="state-service" data-target="redis-state-plane" d="M1011 555 V578 H247 V604"/>
+  <g id="audit-relay-to-worm" data-source="workers" data-target="worm-audit-sink">
+    <circle cx="1218" cy="545" r="5" fill="#00E5FF" stroke="#071014" stroke-width="2"/>
+    <path class="flowAudit" d="M1218 545 V584 H1018 V718 H850 V709"/>
+    <rect x="1035" y="734" width="360" height="27" rx="5" fill="#101C22" stroke="#00E5FF" stroke-width="1.5"/>
+    <text class="auditLabel" x="1046" y="753">AUDIT RELAY (WORKERS ONLY) → WORM</text>
+  </g>
   <path class="flowOrange" d="M1289 555 V568 H1180 V604"/>
   <path class="flowOrange dashed" d="M1551 604 V568 H1437 V398 H1012 V390"/>
   <path class="flowGreen dashed" d="M412 656 H438"/>
 
   <path class="flowGreen dashed" d="M1004 656 H1030"/>
 
+  <g id="artifact-delete-edge-label" data-edge-for="artifact-delete-worker-to-object-store">
+    <rect x="680" y="559" width="178" height="17" rx="4" fill="#1F151A" stroke="#FF6B6B" stroke-width="1"/>
+    <text class="deleteLabel" x="688" y="571">DELETE COMPLETE → BLOB</text>
+  </g>
+  <g id="artifact-hold-edge-label" data-edge-for="artifact-reaper-to-state">
+    <rect x="1160" y="414" width="172" height="17" rx="4" fill="#101C22" stroke="#F2A65A" stroke-width="1"/>
+    <text class="micro" x="1168" y="426">HOLD CAS ONLY → STATE</text>
+  </g>
+
+  <g id="artifact-hold-cas-contract" data-role="artifact-hold-cas-contract" data-authority="state-service">
+    <rect x="1450" y="400" width="266" height="31" rx="6" fill="#101C22" stroke="#F2A65A" stroke-width="1.4"/>
+    <text class="chip" x="1460" y="410">ARTIFACT HOLD · SINGLE-CAS SNAPSHOT</text>
+    <text class="micro" x="1460" y="420">ACTIVE → EXPIRED · current authority</text>
+    <text class="micro" x="1460" y="429">immutable commit · audit · outbox</text>
+  </g>
+
   <!-- Keep boundary and flow labels readable above crossing lines. -->
   <rect x="320" y="241" width="1100" height="30" rx="5" fill="#0F131B"/>
   <text class="section" x="330" y="262">LINUX TRUST · PUBLIC TLS: A2A/MCP + NATS · PRIVATE OPS/SERVICES/STORES</text>
 
   <text class="tiny" x="1055" y="726">SENSITIVE STORAGE / RECOVERY ZONE · LOOPBACK OR PRIVATE NETWORK · SEPARATE SERVICE CREDENTIALS</text>
+
+  <g id="capability-boundary" data-kind="capability-not-trust-boundary">
+    <path d="M1110 782 H1728" fill="none" stroke="#6B7280" stroke-width="1"/>
+    <rect x="1168" y="763" width="550" height="18" fill="#0B0D12"/>
+    <text class="tiny" x="1180" y="777">CAPABILITY · EXECUTABLE PURE CONTRACT ≠ REDIS / NATS INTEGRATION</text>
+  </g>
 
   <text class="section" x="64" y="790">SYMMETRIC PEERS · TRUSTED AGENT/BROKERS · UNTRUSTED RUNTIME SANDBOX · OUTBOUND NATS</text>
   <text class="tiny" x="570" y="768">④ Peer-initiated outbound TLS · bidirectional custom Binding messages · no inbound Windows listener</text>
