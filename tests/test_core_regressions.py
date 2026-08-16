@@ -11,7 +11,7 @@ import pytest_asyncio
 from pydantic import ValidationError
 
 import nats
-from a2amesh.a2anats.client import MeshClient
+from a2amesh.a2anats.compatibility import LegacyMeshClientAdapter
 from a2amesh.a2anats.errors import FORBIDDEN, JsonRpcError
 from a2amesh.config import Config
 from a2amesh.contracts.models import Message, Plan, Step, Task, TaskStatus, TextPart
@@ -104,7 +104,7 @@ async def test_message_send_creates_queryable_task_and_cancel_terminates_running
     runtime = AgentRuntime(cfg, adapters={"hermes": SlowAdapter()})
     await runtime.start()
     caller = await nats.connect(NATS_URL)
-    client = MeshClient(caller, enabled=True)
+    client = LegacyMeshClientAdapter(caller, enabled=True)
     task_id = "cancel-me"
     try:
         invocation = asyncio.create_task(
@@ -266,7 +266,7 @@ async def test_remote_tools_require_explicit_public_allowlist():
     runtime = AgentRuntime(cfg, adapters={"hermes": SlowAdapter()})
     await runtime.start()
     caller = await nats.connect(NATS_URL)
-    client = MeshClient(caller, enabled=True)
+    client = LegacyMeshClientAdapter(caller, enabled=True)
     try:
         result = await client.call_tool("audit-tools", "list_dir", {"path": "."})
         assert "entries" in result

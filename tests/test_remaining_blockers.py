@@ -12,9 +12,11 @@ from types import SimpleNamespace
 import pytest
 from pydantic import ValidationError
 
-from a2amesh.a2anats.client import MeshClient
+from a2amesh.a2anats.compatibility import (
+    LegacyMeshClientAdapter,
+    LegacyMeshServerAdapter,
+)
 from a2amesh.a2anats.errors import FORBIDDEN, INVALID_PARAMS, METHOD_NOT_FOUND, JsonRpcError
-from a2amesh.a2anats.server import MeshServer
 from a2amesh.cli import cmd_bootstrap, cmd_init
 from a2amesh.cli import main as cli_main
 from a2amesh.config import Config
@@ -68,7 +70,7 @@ class RetryNC:
 @pytest.mark.asyncio
 async def test_send_retry_reuses_a_non_null_task_id():
     nc = RetryNC()
-    task = await MeshClient(nc, enabled=True).send_message(
+    task = await LegacyMeshClientAdapter(nc, enabled=True).send_message(
         "worker", Message(role="user", parts=[TextPart(text="hello")])
     )
     ids = [request["params"]["metadata"]["taskId"] for request in nc.requests]
@@ -90,7 +92,7 @@ class AlwaysTimeoutNC:
 async def test_non_idempotent_tool_call_is_not_retried():
     nc = AlwaysTimeoutNC()
     with pytest.raises(TimeoutError):
-        await MeshClient(nc, enabled=True).call_tool(
+        await LegacyMeshClientAdapter(nc, enabled=True).call_tool(
             "worker",
             "write_file",
             {"path": "x", "content": "y"},
@@ -153,7 +155,7 @@ class PrivateStreamNC:
 @pytest.mark.asyncio
 async def test_streaming_uses_private_request_inbox_not_public_stream_subject():
     nc = PrivateStreamNC()
-    task_id, events = await MeshClient(nc, enabled=True).send_message_stream(
+    task_id, events = await LegacyMeshClientAdapter(nc, enabled=True).send_message_stream(
         "worker",
         Message(role="user", parts=[TextPart(text="hello")]),
         task_id="stream-task",
@@ -460,7 +462,7 @@ class ErrorHandler:
 
 @pytest.mark.asyncio
 async def test_server_unknown_method_and_internal_error_mapping():
-    server = MeshServer(SimpleNamespace(), "x", ErrorHandler(), enabled=True)
+    server = LegacyMeshServerAdapter(SimpleNamespace(), "x", ErrorHandler(), enabled=True)
     unknown = FakeMsg({"jsonrpc": "2.0", "id": "1", "method": "bogus/do", "params": {}})
     await server._on_rpc(unknown)
     assert unknown.responses[0]["error"]["code"] == METHOD_NOT_FOUND

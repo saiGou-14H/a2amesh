@@ -13,8 +13,6 @@ from a2amesh.a2anats import (
     LegacyMeshClientAdapter,
     LegacyMeshServerAdapter,
 )
-from a2amesh.a2anats.client import MeshClient
-from a2amesh.a2anats.server import MeshServer
 from a2amesh.contracts.models import Message, TextPart
 
 
@@ -99,17 +97,16 @@ async def test_default_server_rejects_start_and_direct_handler_bypass_before_io(
     assert nc.calls == []
 
 
-def test_deprecated_import_shims_point_to_explicitly_named_adapter_only() -> None:
-    assert MeshClient is LegacyMeshClientAdapter
-    assert MeshServer is LegacyMeshServerAdapter
+def test_obsolete_mesh_client_and_server_import_shims_are_removed() -> None:
+    package = Path(__file__).parents[1] / "src" / "a2amesh" / "a2anats"
+    assert not (package / "client.py").exists()
+    assert not (package / "server.py").exists()
 
-    client_source = Path(__import__("a2amesh.a2anats.client", fromlist=["x"]).__file__).read_text()
-    server_source = Path(__import__("a2amesh.a2anats.server", fromlist=["x"]).__file__).read_text()
-    for source in (client_source, server_source):
-        assert "message/send" not in source
-        assert "tasks/get" not in source
-        assert "a2a.rpc." not in source
-        assert "compatibility" in source.lower()
+    compatibility_source = (package / "compatibility.py").read_text()
+    assert "class LegacyMeshClientAdapter" in compatibility_source
+    assert "class LegacyMeshServerAdapter" in compatibility_source
+    assert "message/send" in compatibility_source
+    assert "tasks/get" in compatibility_source
 
 
 def test_production_runtime_uses_named_adapter_and_cli_does_not_overclaim_listener() -> None:

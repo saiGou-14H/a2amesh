@@ -9,8 +9,10 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 import nats
-from a2amesh.a2anats.client import MeshClient
-from a2amesh.a2anats.server import MeshServer
+from a2amesh.a2anats.compatibility import (
+    LegacyMeshClientAdapter,
+    LegacyMeshServerAdapter,
+)
 from a2amesh.contracts.models import AgentCard, Message, TextPart
 from a2amesh.tools.registry import ToolRegistry
 
@@ -50,12 +52,12 @@ class FakeHandler:
 async def test_roundtrip():
     # agent_b 作为服务端
     nc_b = await nats.connect(NATS_URL)
-    server_b = MeshServer(nc_b, "agent_b", FakeHandler("agent_b"), enabled=True)
+    server_b = LegacyMeshServerAdapter(nc_b, "agent_b", FakeHandler("agent_b"), enabled=True)
     await server_b.start()
 
     # agent_a 作为客户端
     nc_a = await nats.connect(NATS_URL)
-    client = MeshClient(nc_a, enabled=True)
+    client = LegacyMeshClientAdapter(nc_a, enabled=True)
 
     task = await client.send_message(
         "agent_b", Message(role="user", parts=[TextPart(text="hello world")]))

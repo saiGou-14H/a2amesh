@@ -8,7 +8,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 import nats
-from a2amesh.a2anats.client import MeshClient
+from a2amesh.a2anats.compatibility import LegacyMeshClientAdapter
 from a2amesh.config import Config
 from a2amesh.contracts.models import Message, TextPart
 from a2amesh.runtime.adapters.base import AgentAdapter
@@ -43,7 +43,7 @@ async def main():
     await asyncio.sleep(0.5)
 
     nc = await nats.connect(NATS_URL)
-    client = MeshClient(nc, enabled=True)
+    client = LegacyMeshClientAdapter(nc, enabled=True)
 
     task_id, events = await client.send_message_stream(
         "win1", Message(role="user", parts=[TextPart(text="hi")]), runtime="hermes")

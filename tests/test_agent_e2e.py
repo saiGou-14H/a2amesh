@@ -8,7 +8,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 import nats
-from a2amesh.a2anats.client import MeshClient
+from a2amesh.a2anats.compatibility import LegacyMeshClientAdapter
 from a2amesh.config import Config
 from a2amesh.runtime.agent import AgentRuntime
 
@@ -31,7 +31,7 @@ async def main():
     await asyncio.sleep(0.8)  # 等服务注册 + 卡片发布
 
     nc = await nats.connect(NATS_URL)
-    client = MeshClient(nc, enabled=True)
+    client = LegacyMeshClientAdapter(nc, enabled=True)
 
     # 1. get_card：卡片含 hermes 运行时 + builtin 工具
     card = await client.get_card("win1")
