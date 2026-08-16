@@ -91,9 +91,7 @@ class NatsSubscription(Protocol):
     async def unsubscribe(self) -> None: ...
 
 
-class NatsConnection(Protocol):
-    def new_inbox(self) -> str: ...
-
+class NatsServerConnection(Protocol):
     async def subscribe(
         self,
         subject: str,
@@ -101,10 +99,6 @@ class NatsConnection(Protocol):
         queue: str | None = None,
         cb: Callable[[NatsMessage], Awaitable[None]] | None = None,
     ) -> NatsSubscription: ...
-
-    async def publish(self, subject: str, payload: bytes, *, reply: str | None = None) -> None: ...
-
-    async def flush(self) -> None: ...
 
 
 class ReplySubscription(Protocol):
@@ -271,7 +265,7 @@ class V1NatsServer:
 
     def __init__(
         self,
-        nc: NatsConnection,
+        nc: NatsServerConnection,
         *,
         agent_id: str,
         application: CanonicalApplication,
