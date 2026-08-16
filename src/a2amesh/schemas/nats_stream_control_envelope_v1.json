@@ -1,0 +1,81 @@
+{
+  "$id": "https://a2amesh.dev/schemas/nats-stream-control-envelope-v1.1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "bindingUri",
+    "bindingSchemaVersion",
+    "a2aProtocolVersion",
+    "operation",
+    "requestId",
+    "callerInstanceId",
+    "streamOpenId",
+    "configGeneration",
+    "callerAgentId",
+    "authContext",
+    "authProof",
+    "targetAgentId",
+    "sentAt",
+    "deadlineAt",
+    "replySubject",
+    "payload"
+  ],
+  "properties": {
+    "bindingUri": {"const": "https://a2amesh.dev/bindings/nats/v1"},
+    "bindingSchemaVersion": {"const": "1.1"},
+    "a2aProtocolVersion": {"const": "1.0"},
+    "operation": {
+      "enum": ["StreamSessionOpen", "StreamSessionAck", "StreamSessionClose"]
+    },
+    "requestId": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,128}$"},
+    "callerInstanceId": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,128}$"},
+    "streamOpenId": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,128}$"},
+    "configGeneration": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "callerAgentId": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,62}$"},
+    "authContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "principalId",
+        "credentialId",
+        "method",
+        "issuer",
+        "subject",
+        "issuedAt",
+        "expiresAt"
+      ],
+      "properties": {
+        "principalId": {"type": "string", "minLength": 1, "maxLength": 256},
+        "credentialId": {"type": "string", "minLength": 1, "maxLength": 256},
+        "method": {"type": "string", "minLength": 1, "maxLength": 64},
+        "issuer": {"type": "string", "minLength": 1, "maxLength": 256},
+        "subject": {"type": "string", "minLength": 1, "maxLength": 256},
+        "issuedAt": {"type": "string", "format": "date-time"},
+        "expiresAt": {"type": "string", "format": "date-time"}
+      }
+    },
+    "authProof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["signer", "algorithm", "signature"],
+      "properties": {
+        "signer": {"type": "string", "minLength": 1, "maxLength": 256},
+        "algorithm": {"const": "nkey-ed25519"},
+        "signature": {"type": "string", "minLength": 1, "maxLength": 1024}
+      }
+    },
+    "targetAgentId": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,62}$"},
+    "sentAt": {"type": "string", "format": "date-time"},
+    "deadlineAt": {"type": "string", "format": "date-time"},
+    "replySubject": {
+      "type": "string",
+      "pattern": "^_INBOX\\.a2amesh\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$"
+    },
+    "payload": {"type": "object"}
+  }
+}

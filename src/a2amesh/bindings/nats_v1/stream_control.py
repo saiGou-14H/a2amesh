@@ -40,6 +40,24 @@ class StreamControlKind(StrEnum):
         return f"a2a.v1.stream.{self.value}"
 
 
+class StreamControlOperation(StrEnum):
+    OPEN = "StreamSessionOpen"
+    ACK = "StreamSessionAck"
+    CLOSE = "StreamSessionClose"
+
+    @property
+    def kind(self) -> StreamControlKind:
+        return {
+            StreamControlOperation.OPEN: StreamControlKind.OPEN,
+            StreamControlOperation.ACK: StreamControlKind.ACK,
+            StreamControlOperation.CLOSE: StreamControlKind.CLOSE,
+        }[self]
+
+    @property
+    def subject(self) -> str:
+        return self.kind.subject
+
+
 class StreamSessionState(StrEnum):
     OPENING = "OPENING"
     ACTIVE = "ACTIVE"

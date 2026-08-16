@@ -1,0 +1,39 @@
+{
+  "a2aProtocolVersion": "1.0",
+  "authContext": {
+    "credentialId": "cli-buildbot",
+    "expiresAt": "2026-08-14T03:35:00Z",
+    "issuedAt": "2026-08-14T03:20:00Z",
+    "issuer": "a2amesh-config",
+    "method": "a2a-bearer",
+    "principalId": "a2a:cli-buildbot",
+    "subject": "cli-buildbot"
+  },
+  "authProof": {
+    "algorithm": "nkey-ed25519",
+    "signature": "aasxbck3IqWsYS9kDav6iIPb8Dk59jzh1r89j5YQ708igOINaT4mffmvSHFWgRjTmTlQ3FXBmkLNHCWv6BNJCQ",
+    "signer": "UCQPHRZSOVNAJQ62JY347XXPNUNXOHK5KIXRQWMDW7F2F7FCI5TQHFKE"
+  },
+  "bindingSchemaVersion": "1.1",
+  "bindingUri": "https://a2amesh.dev/bindings/nats/v1",
+  "callerAgentId": "linux-gateway",
+  "callerInstanceId": "gateway-01",
+  "configGeneration": 42,
+  "deadlineAt": "2026-08-14T03:30:00Z",
+  "operation": "StreamSessionOpen",
+  "payload": {
+    "callerInstanceId": "gateway-01",
+    "configGeneration": 42,
+    "expiresAt": "2026-08-14T03:30:00.000Z",
+    "operation": "SendStreamingMessage",
+    "requestDigest": "cd6ce9a1f01f367c8ef658b2e4e94d3e7897f81893e95174f3d1316a40afbfef",
+    "schemaVersion": "1.0",
+    "streamOpenId": "stream-open-01H-control",
+    "taskId": "task-01H-control"
+  },
+  "replySubject": "_INBOX.a2amesh.linux-gateway.ctrl-open01",
+  "requestId": "req-stream-open-001",
+  "sentAt": "2026-08-14T03:25:00Z",
+  "streamOpenId": "stream-open-01H-control",
+  "targetAgentId": "windows-a"
+}

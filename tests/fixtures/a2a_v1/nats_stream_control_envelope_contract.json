@@ -1,0 +1,36 @@
+{
+  "canonicalization": "RFC8785",
+  "excludedFields": ["authProof.signature"],
+  "operations": {
+    "ack": {
+      "operation": "StreamSessionAck",
+      "signature": "XmlMwFX2JhpteQjgbZSS_00eq9ANjzmxj3ta6_YFkysv2kiffPkjPkLWRYN_6FLVdgA91jRn6Erip1H41jkBAg",
+      "signer": "UCQPHRZSOVNAJQ62JY347XXPNUNXOHK5KIXRQWMDW7F2F7FCI5TQHFKE",
+      "signingLength": 1007,
+      "signingSha256": "07f0435f3d193252363847a47c7e55ab122312d9db61264949ff945fd25da515",
+      "subject": "a2a.v1.stream.ack",
+      "wireLength": 1108,
+      "wireSha256": "9e5cc84a9f162c958d8378cd98ddb0fc85e2712614a6722a3141d16c8771e810"
+    },
+    "close": {
+      "operation": "StreamSessionClose",
+      "signature": "1jKL6rWu5lPW2iAR-XFQAEB0VdAQj9ZFcnPd_DVd_Z74ItawpBJ5N_6Bl4_jjLJVPGxxew3ujgCn5As6zrXkAw",
+      "signer": "UCQPHRZSOVNAJQ62JY347XXPNUNXOHK5KIXRQWMDW7F2F7FCI5TQHFKE",
+      "signingLength": 932,
+      "signingSha256": "d6d194e210165867614274be3fc0cc8db11a4df8d3ea6481b5bcd4bab1b7b203",
+      "subject": "a2a.v1.stream.close",
+      "wireLength": 1033,
+      "wireSha256": "93930a5690aec67c5bd30b423aa3860b7672455cd2b6cb333bbe2e0040e5669c"
+    },
+    "open": {
+      "operation": "StreamSessionOpen",
+      "signature": "aasxbck3IqWsYS9kDav6iIPb8Dk59jzh1r89j5YQ708igOINaT4mffmvSHFWgRjTmTlQ3FXBmkLNHCWv6BNJCQ",
+      "signer": "UCQPHRZSOVNAJQ62JY347XXPNUNXOHK5KIXRQWMDW7F2F7FCI5TQHFKE",
+      "signingLength": 1100,
+      "signingSha256": "52f5f6302757e082540e2689459be645b0ee464ad137ae91a85851311fa24b73",
+      "subject": "a2a.v1.stream.open",
+      "wireLength": 1201,
+      "wireSha256": "e37e2a40c7552af9a30724cd42014ba31acb475e557c9415cbeaa1a164cc8c2b"
+    }
+  }
+}

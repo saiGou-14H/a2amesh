@@ -19,11 +19,50 @@ from a2amesh.identity import (
     verify_nkey_signature,
 )
 
-from .envelope import AuthProof, BindingRequestEnvelope, BindingValidationError
+from .envelope import (
+    AuthContext,
+    AuthProof,
+    BindingRequestEnvelope,
+    BindingValidationError,
+)
 
 AUTH_ALGORITHM = "nkey-ed25519"
 RPC_SUBJECT_PREFIX = "a2a.v1.rpc."
 _REPLY_PREFIX = re.compile(r"^_INBOX\.a2amesh\.[A-Za-z0-9_-]+\.$")
+
+
+class SignedBindingEnvelope(Protocol):
+    @property
+    def request_id(self) -> str: ...
+
+    @property
+    def caller_instance_id(self) -> str: ...
+
+    @property
+    def config_generation(self) -> int: ...
+
+    @property
+    def caller_agent_id(self) -> str: ...
+
+    @property
+    def auth_context(self) -> AuthContext: ...
+
+    @property
+    def auth_proof(self) -> AuthProof: ...
+
+    @property
+    def target_agent_id(self) -> str: ...
+
+    @property
+    def sent_at(self) -> datetime: ...
+
+    @property
+    def deadline_at(self) -> datetime: ...
+
+    @property
+    def reply_subject(self) -> str: ...
+
+    def signing_payload_dict(self) -> dict[str, object]: ...
 
 
 class RequestReplayGuard(Protocol):
@@ -47,7 +86,7 @@ class VerifiedBindingIdentity:
     request_id: str
 
 
-def canonical_signing_bytes(envelope: BindingRequestEnvelope) -> bytes:
+def canonical_signing_bytes(envelope: SignedBindingEnvelope) -> bytes:
     """RFC 8785 bytes for the envelope excluding only authProof.signature."""
     try:
         return rfc8785.dumps(envelope.signing_payload_dict())
@@ -120,6 +159,33 @@ class BindingAuthVerifier:
         active_config_generation: int,
         now: datetime | None = None,
     ) -> VerifiedBindingIdentity:
+        return await self.verify_subject(
+            envelope,
+            received_subject=received_subject,
+            expected_subject=f"{RPC_SUBJECT_PREFIX}{expected_target_agent_id}",
+            connection_public_key=connection_public_key,
+            expected_target_agent_id=expected_target_agent_id,
+            expected_caller_agent_id=expected_caller_agent_id,
+            expected_caller_instance_id=expected_caller_instance_id,
+            allowed_reply_prefix=allowed_reply_prefix,
+            expected_config_generation=active_config_generation,
+            now=now,
+        )
+
+    async def verify_subject(
+        self,
+        envelope: SignedBindingEnvelope,
+        *,
+        received_subject: str,
+        expected_subject: str,
+        connection_public_key: str,
+        expected_target_agent_id: str,
+        expected_caller_agent_id: str,
+        expected_caller_instance_id: str,
+        allowed_reply_prefix: str,
+        expected_config_generation: int,
+        now: datetime | None = None,
+    ) -> VerifiedBindingIdentity:
         current = datetime.now(UTC) if now is None else now
         if current.tzinfo is None:
             raise BindingValidationError("verification clock must be timezone-aware")
@@ -141,7 +207,6 @@ class BindingAuthVerifier:
         if context.subject not in policy.subjects:
             raise BindingValidationError("signer cannot represent this subject")
 
-        expected_subject = f"{RPC_SUBJECT_PREFIX}{expected_target_agent_id}"
         if envelope.target_agent_id != expected_target_agent_id:
             raise BindingValidationError("targetAgentId does not match the receiving agent")
         if received_subject != expected_subject:
@@ -154,8 +219,8 @@ class BindingAuthVerifier:
             raise BindingValidationError("allowed reply prefix is invalid")
         if not envelope.reply_subject.startswith(allowed_reply_prefix):
             raise BindingValidationError("replySubject is outside the authenticated caller prefix")
-        if envelope.config_generation != active_config_generation:
-            raise BindingValidationError("configGeneration is not active")
+        if envelope.config_generation != expected_config_generation:
+            raise BindingValidationError("configGeneration does not match expected generation")
 
         if context.issued_at > current + self._clock_skew:
             raise BindingValidationError("AuthContext was issued in the future")

@@ -28,11 +28,17 @@ from .stream_control import (
     StreamAckRequestV1,
     StreamCloseRequestV1,
     StreamControlKind,
+    StreamControlOperation,
     StreamControlResultV1,
     StreamOpenDigestContextV1,
     StreamOpenRequestV1,
     StreamSessionState,
     compute_stream_open_request_digest,
+)
+from .stream_control_envelope import (
+    StreamControlAuthVerifier,
+    StreamControlEnvelopeV1,
+    sign_stream_control_envelope,
 )
 
 __all__ = [
@@ -50,7 +56,10 @@ __all__ = [
     "RequestReplayGuard",
     "StreamAckRequestV1",
     "StreamCloseRequestV1",
+    "StreamControlAuthVerifier",
+    "StreamControlEnvelopeV1",
     "StreamControlKind",
+    "StreamControlOperation",
     "StreamControlResultV1",
     "StreamFrameCursorV1",
     "StreamFrameDisposition",
@@ -63,4 +72,5 @@ __all__ = [
     "canonical_signing_bytes",
     "compute_stream_open_request_digest",
     "sign_request_envelope",
+    "sign_stream_control_envelope",
 ]
