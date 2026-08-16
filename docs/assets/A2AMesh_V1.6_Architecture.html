@@ -1,20 +1,20 @@
-<!doctype html>
-<html lang="zh-CN">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>A2AMesh V1.6 最新总体架构</title>
-<style>
-:root{color-scheme:dark;background:#0b0d12;color:#f5f7fb;font-family:"A2AMesh CJK","Noto Sans CJK SC","Microsoft YaHei",Inter,sans-serif}
-*{box-sizing:border-box}body{margin:0;background:#0b0d12}.bar{position:sticky;top:0;z-index:3;display:flex;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid #2d3441;background:#0f131bf2;backdrop-filter:blur(10px)}
-.bar h1{font-size:16px;margin:0 auto 0 0}.bar span{font-size:12px;color:#9ea8b8}.bar button{border:1px solid #3e4859;background:#171c26;color:#f5f7fb;border-radius:8px;padding:7px 11px;cursor:pointer}.bar button:hover{border-color:#5b8cff}.viewport{height:calc(100vh - 58px);overflow:auto;padding:18px}.stage{position:relative;width:1800px;height:1120px}.stage svg{display:block;transform-origin:0 0;transition:transform .12s ease;box-shadow:0 12px 44px #0008;border:1px solid #252c38;border-radius:14px}.note{position:fixed;right:24px;bottom:24px;max-width:390px;padding:12px 14px;background:#111620ee;border:1px solid #343c4b;border-radius:10px;color:#aab4c4;font-size:12px;line-height:1.55}.note strong{color:#f5f7fb}
-@media(max-width:760px){.bar span,.note{display:none}.viewport{padding:8px}}
-</style>
-</head>
-<body>
-<header class="bar"><h1>A2AMesh V1.6 · 最新总体架构</h1><span>G0 candidate · closure review pending · not implemented</span><button type="button" id="minus" aria-label="缩小">−</button><button type="button" id="reset" aria-label="适应宽度">适应</button><button type="button" id="plus" aria-label="放大">＋</button></header>
-<main class="viewport" id="viewport"><div class="stage" id="stage">
-<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1120" viewBox="0 0 1800 1120" role="img" aria-labelledby="title desc">
+1|<!doctype html>
+2|<html lang="zh-CN">
+3|<head>
+4|<meta charset="utf-8">
+5|<meta name="viewport" content="width=device-width,initial-scale=1">
+6|<title>A2AMesh V1.6 最新总体架构</title>
+7|<style>
+8|:root{color-scheme:dark;background:#0b0d12;color:#f5f7fb;font-family:"A2AMesh CJK","Noto Sans CJK SC","Microsoft YaHei",Inter,sans-serif}
+9|*{box-sizing:border-box}body{margin:0;background:#0b0d12}.bar{position:sticky;top:0;z-index:3;display:flex;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid #2d3441;background:#0f131bf2;backdrop-filter:blur(10px)}
+10|.bar h1{font-size:16px;margin:0 auto 0 0}.bar span{font-size:12px;color:#9ea8b8}.bar button{border:1px solid #3e4859;background:#171c26;color:#f5f7fb;border-radius:8px;padding:7px 11px;cursor:pointer}.bar button:hover{border-color:#5b8cff}.viewport{height:calc(100vh - 58px);overflow:auto;padding:18px}.stage{position:relative;width:1800px;height:1120px}.stage svg{display:block;transform-origin:0 0;transition:transform .12s ease;box-shadow:0 12px 44px #0008;border:1px solid #252c38;border-radius:14px}.note{position:fixed;right:24px;bottom:24px;max-width:390px;padding:12px 14px;background:#111620ee;border:1px solid #343c4b;border-radius:10px;color:#aab4c4;font-size:12px;line-height:1.55}.note strong{color:#f5f7fb}
+11|@media(max-width:760px){.bar span,.note{display:none}.viewport{padding:8px}}
+12|</style>
+13|</head>
+14|<body>
+15|<header class="bar"><h1>A2AMesh V1.6 · 最新总体架构</h1><span>G0 candidate · closure review pending · not implemented</span><button type="button" id="minus" aria-label="缩小">−</button><button type="button" id="reset" aria-label="适应宽度">适应</button><button type="button" id="plus" aria-label="放大">＋</button></header>
+16|<main class="viewport" id="viewport"><div class="stage" id="stage">
+17|1|<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1120" viewBox="0 0 1800 1120" role="img" aria-labelledby="title desc">
   <title id="title">A2AMesh V1.6 System Architecture</title>
   <desc id="desc">Public protocol adapters, Canonical Core, NATS and JetStream transport with separate trusted Stream Session Controller and JS Provisioner, Redis authority plane, control services, object storage, audit through Workers and Relays, and symmetric peers whose untrusted Runtime writes only a private worktree before trusted Merge Broker commits to the shared root.</desc>
   <defs>
@@ -189,9 +189,10 @@
     <text class="tiny" x="758" y="700" fill="#00E5FF">AUDIT ONLY · relay receipt required</text>
 
     <rect class="boxOrange" x="1030" y="604" width="330" height="105"/>
-    <text class="label" x="1054" y="637">Recovery Manifest</text>
-    <text class="small" x="1054" y="662">⑦ Redis · JS · Object · config · audit</text>
-    <text class="small" x="1054" y="683">signed WORM manifest · verify · dual release</text>
+    <text class="label" x="1054" y="632">Recovery Roles + Manifest</text>
+    <text class="small" x="1054" y="654">Orchestrator · Verifier · Compactor</text>
+    <text class="tiny" x="1054" y="675">separate Principal / NKey · fenced writers</text>
+    <text class="tiny" x="1054" y="696">signed WORM manifest · dual release</text>
 
     <rect class="box" x="1386" y="604" width="330" height="105"/>
     <text class="label" x="1410" y="637">Trust Root / Secret Store</text>
@@ -249,7 +250,9 @@
     <rect class="boxBlue" x="88" y="867" width="74" height="63"/>
     <text class="small" x="98" y="893">Peer</text><text class="tiny" x="98" y="914">NKey</text>
     <rect class="boxGreen" x="170" y="867" width="80" height="63"/>
-    <text class="small" x="180" y="893">App Core</text><text class="tiny" x="180" y="914">Task NKey</text>
+    <text class="small" x="180" y="893">App Core</text><text class="tiny" x="180" y="914">Core NKey</text>
+    <path class="flowGreen" d="M162 899 H170"/>
+    <path class="flowGreen" d="M258 899 H250"/>
     <rect class="boxGreen" x="258" y="867" width="88" height="63"/>
     <text class="small" x="268" y="893">Supervisor</text><text class="tiny" x="268" y="914">Task owner</text>
     <rect class="boxGreen" x="354" y="867" width="102" height="63"/>
@@ -262,6 +265,7 @@
     <path class="flowOrange" d="M218 974 H242"/><rect class="boxGreen" x="242" y="960" width="132" height="28"/><text class="tiny" x="268" y="978">Merge Broker</text>
     <path class="flowOrange" d="M374 974 H398"/><rect class="boxOrange" x="398" y="960" width="144" height="28"/><text class="tiny" x="410" y="978">shared root</text>
     <text class="tiny" x="106" y="1004">Trusted Tool / SideEffect / Artifact brokers · Runtime has no root ACL</text>
+    <text class="tiny" x="106" y="1025">Peer Binding / Supervisor → App Core: PROTECTED LOCAL IPC · OS identity</text>
   </g>
 
   <g id="peer-windows-b">
@@ -271,7 +275,9 @@
     <rect class="boxBlue" x="666" y="867" width="74" height="63"/>
     <text class="small" x="676" y="893">Peer</text><text class="tiny" x="676" y="914">NKey</text>
     <rect class="boxGreen" x="748" y="867" width="80" height="63"/>
-    <text class="small" x="758" y="893">App Core</text><text class="tiny" x="758" y="914">Task NKey</text>
+    <text class="small" x="758" y="893">App Core</text><text class="tiny" x="758" y="914">Core NKey</text>
+    <path class="flowGreen" d="M740 899 H748"/>
+    <path class="flowGreen" d="M836 899 H828"/>
     <rect class="boxGreen" x="836" y="867" width="88" height="63"/>
     <text class="small" x="846" y="893">Supervisor</text><text class="tiny" x="846" y="914">Task owner</text>
     <rect class="boxGreen" x="932" y="867" width="102" height="63"/>
@@ -284,6 +290,7 @@
     <path class="flowOrange" d="M796 974 H820"/><rect class="boxGreen" x="820" y="960" width="132" height="28"/><text class="tiny" x="846" y="978">Merge Broker</text>
     <path class="flowOrange" d="M952 974 H976"/><rect class="boxOrange" x="976" y="960" width="144" height="28"/><text class="tiny" x="988" y="978">shared root</text>
     <text class="tiny" x="684" y="1004">Trusted Tool / SideEffect / Artifact brokers · Runtime has no root ACL</text>
+    <text class="tiny" x="684" y="1025">Peer Binding / Supervisor → App Core: PROTECTED LOCAL IPC · OS identity</text>
   </g>
 
   <g id="peer-linux">
@@ -293,7 +300,9 @@
     <rect class="boxBlue" x="1244" y="867" width="74" height="63"/>
     <text class="small" x="1254" y="893">Peer</text><text class="tiny" x="1254" y="914">NKey</text>
     <rect class="boxGreen" x="1326" y="867" width="80" height="63"/>
-    <text class="small" x="1336" y="893">App Core</text><text class="tiny" x="1336" y="914">Task NKey</text>
+    <text class="small" x="1336" y="893">App Core</text><text class="tiny" x="1336" y="914">Core NKey</text>
+    <path class="flowGreen" d="M1318 899 H1326"/>
+    <path class="flowGreen" d="M1414 899 H1406"/>
     <rect class="boxGreen" x="1414" y="867" width="88" height="63"/>
     <text class="small" x="1424" y="893">Supervisor</text><text class="tiny" x="1424" y="914">Task owner</text>
     <rect class="boxGreen" x="1510" y="867" width="102" height="63"/>
@@ -306,6 +315,7 @@
     <path class="flowOrange" d="M1374 974 H1398"/><rect class="boxGreen" x="1398" y="960" width="132" height="28"/><text class="tiny" x="1424" y="978">Merge Broker</text>
     <path class="flowOrange" d="M1530 974 H1554"/><rect class="boxOrange" x="1554" y="960" width="144" height="28"/><text class="tiny" x="1566" y="978">shared root</text>
     <text class="tiny" x="1262" y="1004">Trusted Tool / SideEffect / Artifact brokers · Runtime has no root ACL</text>
+    <text class="tiny" x="1262" y="1025">Peer Binding / Supervisor → App Core: PROTECTED LOCAL IPC · OS identity</text>
   </g>
 
   <!-- Peers initiate outbound TLS; after connection establishment, messaging is bidirectional. -->
@@ -323,15 +333,16 @@
   <text class="tiny" x="1058" y="1094">dashed = control / recovery</text>
   <text class="tiny" x="1275" y="1094">Authority Redis · Blob Object Store · Audit WORM · Transport NATS/JS</text>
 </svg>
-
-
-
-
-
-
-</div></main>
-<aside class="note"><strong>阅读重点</strong><br>公网仅暴露 A2A/MCP HTTPS 与 NATS TLS/WSS；Ops 只走私有管理网。外部 AS 仅提供 metadata/JWKS/token validation。Peer 内 Runtime 是不受信 sandbox，只能写 private worktree；共享根仅 Trusted Merge Broker 可提交。</aside>
-<script>
-(()=>{const W=1800,H=1120,s=document.getElementById('stage'),v=document.getElementById('viewport'),svg=s.querySelector('svg'),r=document.getElementById('reset');let manual=null,current=1;const fit=()=>{const c=getComputedStyle(v),available=v.clientWidth-parseFloat(c.paddingLeft)-parseFloat(c.paddingRight)-2;return Math.min(1,Math.max(.15,available/W))};function draw(){current=manual===null?fit():manual;svg.style.transform=`scale(${current})`;s.style.width=`${W*current}px`;s.style.height=`${H*current}px`;r.textContent=manual===null?'适应':Math.round(current*100)+'%'}document.getElementById('minus').onclick=()=>{manual=Math.max(.15,current-.1);draw()};document.getElementById('plus').onclick=()=>{manual=Math.min(2,current+.1);draw()};r.onclick=()=>{manual=null;draw()};window.addEventListener('resize',()=>{if(manual===null)draw()});draw()})();
-</script>
-</body></html>
+326|
+327|
+328|
+329|
+330|
+331|
+332|</div></main>
+333|<aside class="note"><strong>阅读重点</strong><br>公网仅暴露 A2A/MCP HTTPS 与 NATS TLS/WSS；Ops 只走私有管理网。外部 AS 仅提供 metadata/JWKS/token validation。Peer 内 Runtime 是不受信 sandbox，只能写 private worktree；共享根仅 Trusted Merge Broker 可提交。</aside>
+334|<script>
+335|(()=>{const W=1800,H=1120,s=document.getElementById('stage'),v=document.getElementById('viewport'),svg=s.querySelector('svg'),r=document.getElementById('reset');let manual=null,current=1;const fit=()=>{const c=getComputedStyle(v),available=v.clientWidth-parseFloat(c.paddingLeft)-parseFloat(c.paddingRight)-2;return Math.min(1,Math.max(.15,available/W))};function draw(){current=manual===null?fit():manual;svg.style.transform=`scale(${current})`;s.style.width=`${W*current}px`;s.style.height=`${H*current}px`;r.textContent=manual===null?'适应':Math.round(current*100)+'%'}document.getElementById('minus').onclick=()=>{manual=Math.max(.15,current-.1);draw()};document.getElementById('plus').onclick=()=>{manual=Math.min(2,current+.1);draw()};r.onclick=()=>{manual=null;draw()};window.addEventListener('resize',()=>{if(manual===null)draw()});draw()})();
+336|</script>
+337|</body></html>
+338|

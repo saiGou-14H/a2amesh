@@ -173,9 +173,10 @@
     <text class="tiny" x="758" y="700" fill="#00E5FF">AUDIT ONLY · relay receipt required</text>
 
     <rect class="boxOrange" x="1030" y="604" width="330" height="105"/>
-    <text class="label" x="1054" y="637">Recovery Manifest</text>
-    <text class="small" x="1054" y="662">⑦ Redis · JS · Object · config · audit</text>
-    <text class="small" x="1054" y="683">signed WORM manifest · verify · dual release</text>
+    <text class="label" x="1054" y="632">Recovery Roles + Manifest</text>
+    <text class="small" x="1054" y="654">Orchestrator · Verifier · Compactor</text>
+    <text class="tiny" x="1054" y="675">separate Principal / NKey · fenced writers</text>
+    <text class="tiny" x="1054" y="696">signed WORM manifest · dual release</text>
 
     <rect class="box" x="1386" y="604" width="330" height="105"/>
     <text class="label" x="1410" y="637">Trust Root / Secret Store</text>
@@ -233,7 +234,9 @@
     <rect class="boxBlue" x="88" y="867" width="74" height="63"/>
     <text class="small" x="98" y="893">Peer</text><text class="tiny" x="98" y="914">NKey</text>
     <rect class="boxGreen" x="170" y="867" width="80" height="63"/>
-    <text class="small" x="180" y="893">App Core</text><text class="tiny" x="180" y="914">Task NKey</text>
+    <text class="small" x="180" y="893">App Core</text><text class="tiny" x="180" y="914">Core NKey</text>
+    <path class="flowGreen" d="M162 899 H170"/>
+    <path class="flowGreen" d="M258 899 H250"/>
     <rect class="boxGreen" x="258" y="867" width="88" height="63"/>
     <text class="small" x="268" y="893">Supervisor</text><text class="tiny" x="268" y="914">Task owner</text>
     <rect class="boxGreen" x="354" y="867" width="102" height="63"/>
@@ -246,6 +249,7 @@
     <path class="flowOrange" d="M218 974 H242"/><rect class="boxGreen" x="242" y="960" width="132" height="28"/><text class="tiny" x="268" y="978">Merge Broker</text>
     <path class="flowOrange" d="M374 974 H398"/><rect class="boxOrange" x="398" y="960" width="144" height="28"/><text class="tiny" x="410" y="978">shared root</text>
     <text class="tiny" x="106" y="1004">Trusted Tool / SideEffect / Artifact brokers · Runtime has no root ACL</text>
+    <text class="tiny" x="106" y="1025">Peer Binding / Supervisor → App Core: PROTECTED LOCAL IPC · OS identity</text>
   </g>
 
   <g id="peer-windows-b">
@@ -255,7 +259,9 @@
     <rect class="boxBlue" x="666" y="867" width="74" height="63"/>
     <text class="small" x="676" y="893">Peer</text><text class="tiny" x="676" y="914">NKey</text>
     <rect class="boxGreen" x="748" y="867" width="80" height="63"/>
-    <text class="small" x="758" y="893">App Core</text><text class="tiny" x="758" y="914">Task NKey</text>
+    <text class="small" x="758" y="893">App Core</text><text class="tiny" x="758" y="914">Core NKey</text>
+    <path class="flowGreen" d="M740 899 H748"/>
+    <path class="flowGreen" d="M836 899 H828"/>
     <rect class="boxGreen" x="836" y="867" width="88" height="63"/>
     <text class="small" x="846" y="893">Supervisor</text><text class="tiny" x="846" y="914">Task owner</text>
     <rect class="boxGreen" x="932" y="867" width="102" height="63"/>
@@ -268,6 +274,7 @@
     <path class="flowOrange" d="M796 974 H820"/><rect class="boxGreen" x="820" y="960" width="132" height="28"/><text class="tiny" x="846" y="978">Merge Broker</text>
     <path class="flowOrange" d="M952 974 H976"/><rect class="boxOrange" x="976" y="960" width="144" height="28"/><text class="tiny" x="988" y="978">shared root</text>
     <text class="tiny" x="684" y="1004">Trusted Tool / SideEffect / Artifact brokers · Runtime has no root ACL</text>
+    <text class="tiny" x="684" y="1025">Peer Binding / Supervisor → App Core: PROTECTED LOCAL IPC · OS identity</text>
   </g>
 
   <g id="peer-linux">
@@ -277,7 +284,9 @@
     <rect class="boxBlue" x="1244" y="867" width="74" height="63"/>
     <text class="small" x="1254" y="893">Peer</text><text class="tiny" x="1254" y="914">NKey</text>
     <rect class="boxGreen" x="1326" y="867" width="80" height="63"/>
-    <text class="small" x="1336" y="893">App Core</text><text class="tiny" x="1336" y="914">Task NKey</text>
+    <text class="small" x="1336" y="893">App Core</text><text class="tiny" x="1336" y="914">Core NKey</text>
+    <path class="flowGreen" d="M1318 899 H1326"/>
+    <path class="flowGreen" d="M1414 899 H1406"/>
     <rect class="boxGreen" x="1414" y="867" width="88" height="63"/>
     <text class="small" x="1424" y="893">Supervisor</text><text class="tiny" x="1424" y="914">Task owner</text>
     <rect class="boxGreen" x="1510" y="867" width="102" height="63"/>
@@ -290,6 +299,7 @@
     <path class="flowOrange" d="M1374 974 H1398"/><rect class="boxGreen" x="1398" y="960" width="132" height="28"/><text class="tiny" x="1424" y="978">Merge Broker</text>
     <path class="flowOrange" d="M1530 974 H1554"/><rect class="boxOrange" x="1554" y="960" width="144" height="28"/><text class="tiny" x="1566" y="978">shared root</text>
     <text class="tiny" x="1262" y="1004">Trusted Tool / SideEffect / Artifact brokers · Runtime has no root ACL</text>
+    <text class="tiny" x="1262" y="1025">Peer Binding / Supervisor → App Core: PROTECTED LOCAL IPC · OS identity</text>
   </g>
 
   <!-- Peers initiate outbound TLS; after connection establishment, messaging is bidirectional. -->
