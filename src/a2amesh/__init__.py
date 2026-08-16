@@ -4,6 +4,7 @@ from .config_slots import (
     BASE_REQUIRED_SLOT_TYPES,
     RequiredSlotError,
     StableSlot,
+    required_recovery_projection,
     required_slot_projection,
     required_slot_set,
 )
@@ -14,6 +15,7 @@ __all__ = [
     "BASE_REQUIRED_SLOT_TYPES",
     "RequiredSlotError",
     "StableSlot",
+    "required_recovery_projection",
     "required_slot_projection",
     "required_slot_set",
 ]
