@@ -6,7 +6,14 @@ from typing import Literal
 from urllib.parse import urlsplit
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictBool,
+    field_validator,
+    model_validator,
+)
 
 RuntimeName = Literal["hermes", "codex", "claude", "opencode"]
 
@@ -84,6 +91,10 @@ class McpConfig(StrictModel):
         return self
 
 
+class CompatibilityConfig(StrictModel):
+    legacy_private_rpc_enabled: StrictBool = False
+
+
 class ObservabilityConfig(StrictModel):
     otlp_endpoint: str = ""
     log_level: str = "INFO"
@@ -93,6 +104,7 @@ class Config(StrictModel):
     nats: NatsConfig = Field(default_factory=NatsConfig)
     agent: AgentConfig
     mcp: list[McpConfig] = Field(default_factory=list)
+    compatibility: CompatibilityConfig = Field(default_factory=CompatibilityConfig)
     observability: ObservabilityConfig = Field(default_factory=ObservabilityConfig)
 
     @classmethod
