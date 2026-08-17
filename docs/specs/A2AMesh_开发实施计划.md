@@ -440,7 +440,18 @@ tests/unit/protocol/
 - 本模块不实现 version/lease/fencing、Redis CAS、outbox、Task/Context持久化或真实State并发；这些属于C2，不能由本模块宣称已完成；
 - C1-2 在独立复审和提交后全量门禁完成前保持 `candidate/pending-review`，不得写 `[verified]`。
 
-### 8.6 退出门禁（C1 整体）
+### 8.6 C1-3 当前模块：11 操作 transport-independent dispatch contract
+
+截至 2026-08-17 12:23（Asia/Shanghai），C1-3 已形成独立可回滚实现候选：
+
+- `core/application.py` 从唯一 `OPERATION_SPECS` 解析 operation，统一校验 official request/response protobuf 类型、空 tenant、canonical context、handler 存在性和 unary/streaming 模态；
+- `dispatch_unary` 要求 handler 返回 awaitable；`dispatch_streaming` 要求可用 async iterator，并对每个stream item执行精确 response contract校验；非法 operation、错误handler形态、坏async iterator和错误response均映射官方 `InvalidParamsError`/`InvalidAgentResponseError`；
+- `validate_application_contract` fail closed检查11个官方handler是否齐全；`core`与`protocol.application` facade只导出同一实现，不建立第二套Core；
+- RED→GREEN证据：11操作矩阵、stream/unary分流、missing handler、wrong request/response、wrong awaitable/iterator、unknown operation和伪造Context负例共 `19 passed`；修复后全量 `408 passed, 8 skipped`，Ruff、compileall、diff-check通过；
+- 本模块只关闭transport-independent dispatch contract，不实现业务Task持久化、capability实现、version/lease/fencing、Redis CAS、真实stream broker或完整A2A生产互操作；不能宣称C1整体完成或生产就绪；
+- C1-3 checkpoint、独立复审和提交后全量门禁完成前保持 `candidate/pending-review`，不得写 `[verified]`。
+
+### 8.7 退出门禁（C1 整体）
 
 - 11 方法接口存在且有 contract test；
 - 官方 SDK 可解析所有输入/输出；

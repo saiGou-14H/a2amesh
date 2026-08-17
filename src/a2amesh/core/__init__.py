@@ -1,6 +1,12 @@
 """Canonical A2A application-core contracts shared by every binding."""
 
-from .application import CanonicalApplication, CanonicalRequestContext, dispatch_unary
+from .application import (
+    CanonicalApplication,
+    CanonicalRequestContext,
+    dispatch_streaming,
+    dispatch_unary,
+    validate_application_contract,
+)
 from .operations import (
     OPERATION_SPECS,
     CapabilityRequirement,
@@ -17,6 +23,8 @@ __all__ = [
     "CanonicalApplication",
     "CanonicalRequestContext",
     "dispatch_unary",
+    "dispatch_streaming",
+    "validate_application_contract",
     "CapabilityRequirement",
     "CoreCapabilities",
     "DeliveryProfile",

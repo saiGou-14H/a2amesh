@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import inspect
 import re
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterable, AsyncIterator, Callable
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Protocol, cast
 
 from google.protobuf.message import Message as ProtobufMessage
 
@@ -16,7 +17,7 @@ from a2amesh.protocol.errors import (
     InvalidRequestError,
 )
 
-from .operations import OPERATION_SPECS, Operation
+from .operations import OPERATION_SPECS, Operation, OperationSpec
 
 _SAFE_TOKEN = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 _AGENT_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
@@ -111,18 +112,15 @@ class CanonicalApplication(Protocol):
     ) -> ProtobufMessage: ...
 
 
-async def dispatch_unary(
-    application: object,
-    operation: Operation,
-    request: ProtobufMessage,
-    context: CanonicalRequestContext,
-) -> ProtobufMessage:
-    """Validate and dispatch one unary operation without reading binding metadata."""
-    spec = OPERATION_SPECS[operation]
-    if spec.streaming:
-        raise InvalidRequestError(
-            message=f"{operation.value} is streaming and requires streaming dispatch"
-        )
+def _resolve_operation_spec(operation: Operation) -> OperationSpec:
+    if not isinstance(operation, Operation):
+        raise InvalidParamsError(message=f"unknown canonical operation: {operation!r}")
+    return OPERATION_SPECS[operation]
+
+
+def _validate_request(
+    operation: Operation, spec: OperationSpec, request: ProtobufMessage
+) -> None:
     if not isinstance(request, spec.request_type):
         raise InvalidParamsError(
             message=(
@@ -133,12 +131,29 @@ async def dispatch_unary(
     if getattr(request, "tenant", ""):
         raise InvalidParamsError(message="non-empty tenant is not supported by A2AMesh V1")
 
+
+def _validate_context(context: object) -> CanonicalRequestContext:
+    if not isinstance(context, CanonicalRequestContext):
+        raise InvalidParamsError(
+            message="application dispatch requires a CanonicalRequestContext"
+        )
+    return context
+
+
+def _handler_for(
+    application: object, spec: OperationSpec
+) -> Callable[..., object]:
     handler = getattr(application, spec.handler_name, None)
     if not callable(handler):
         raise InvalidAgentResponseError(
             message=f"canonical application does not implement {spec.handler_name}"
         )
-    result = await handler(request, context)
+    return cast(Callable[..., object], handler)
+
+
+def _validate_response(
+    operation: Operation, spec: OperationSpec, result: object
+) -> ProtobufMessage:
     if not isinstance(result, spec.response_type):
         raise InvalidAgentResponseError(
             message=(
@@ -146,4 +161,72 @@ async def dispatch_unary(
                 f"got {type(result).__name__}"
             )
         )
-    return result
+    return cast(ProtobufMessage, result)
+
+
+def validate_application_contract(application: object) -> None:
+    """Fail closed when a semantic application omits any official operation handler."""
+    missing = [
+        operation.value
+        for operation, spec in OPERATION_SPECS.items()
+        if not callable(getattr(application, spec.handler_name, None))
+    ]
+    if missing:
+        raise InvalidAgentResponseError(
+            message=f"canonical application is missing handlers: {', '.join(missing)}"
+        )
+
+
+async def dispatch_unary(
+    application: object,
+    operation: Operation,
+    request: ProtobufMessage,
+    context: CanonicalRequestContext,
+) -> ProtobufMessage:
+    """Validate and dispatch one unary operation without reading binding metadata."""
+    spec = _resolve_operation_spec(operation)
+    if spec.streaming:
+        raise InvalidRequestError(
+            message=f"{operation.value} is streaming and requires streaming dispatch"
+        )
+    context = _validate_context(context)
+    _validate_request(operation, spec, request)
+    handler = _handler_for(application, spec)
+    result = handler(request, context)
+    if not inspect.isawaitable(result):
+        raise InvalidAgentResponseError(
+            message=f"{operation.value} handler must return an awaitable"
+        )
+    return _validate_response(operation, spec, await result)
+
+
+async def dispatch_streaming(
+    application: object,
+    operation: Operation,
+    request: ProtobufMessage,
+    context: CanonicalRequestContext,
+) -> AsyncIterator[ProtobufMessage]:
+    """Validate and dispatch one streaming operation with exact item types."""
+    spec = _resolve_operation_spec(operation)
+    if not spec.streaming:
+        raise InvalidRequestError(
+            message=f"{operation.value} is unary and requires unary dispatch"
+        )
+    context = _validate_context(context)
+    _validate_request(operation, spec, request)
+    handler = _handler_for(application, spec)
+    stream = handler(request, context)
+    if inspect.isawaitable(stream):
+        if inspect.iscoroutine(stream):
+            stream.close()
+        raise InvalidAgentResponseError(
+            message=f"{operation.value} handler must return an async iterator"
+        )
+    try:
+        iterator = aiter(cast(AsyncIterable[object], stream))
+    except TypeError as exc:
+        raise InvalidAgentResponseError(
+            message=f"{operation.value} handler must return an async iterator"
+        ) from exc
+    async for item in iterator:
+        yield _validate_response(operation, spec, item)
