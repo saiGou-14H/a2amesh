@@ -3,11 +3,20 @@
 from __future__ import annotations
 
 import asyncio
+import functools
 import inspect
 import re
-from collections.abc import AsyncGenerator, AsyncIterable, AsyncIterator, Awaitable, Callable
+from collections.abc import (
+    AsyncGenerator,
+    AsyncIterable,
+    AsyncIterator,
+    Awaitable,
+    Callable,
+    Coroutine,
+)
 from dataclasses import dataclass
-from typing import Protocol, cast, get_origin
+from types import UnionType
+from typing import Annotated, Protocol, Union, cast, get_args, get_origin, get_type_hints
 
 from google.protobuf.message import Message as ProtobufMessage
 
@@ -191,6 +200,8 @@ def _validate_response(
 
 
 def _callable_target(handler: Callable[..., object]) -> object:
+    if isinstance(handler, functools.partial):
+        return handler
     if inspect.isroutine(handler):
         return handler
     try:
@@ -200,8 +211,15 @@ def _callable_target(handler: Callable[..., object]) -> object:
 
 
 def _return_annotation(handler: Callable[..., object]) -> object:
+    target = handler.func if isinstance(handler, functools.partial) else handler
     try:
-        return inspect.signature(handler).return_annotation
+        hints = get_type_hints(target, include_extras=True)
+        if "return" in hints:
+            return hints["return"]
+    except (NameError, TypeError, ValueError):
+        pass
+    try:
+        return inspect.signature(target).return_annotation
     except (TypeError, ValueError):
         return inspect.Signature.empty
 
@@ -212,22 +230,45 @@ def _annotation_has_origin_or_name(
     if annotation is inspect.Signature.empty:
         return False
     if isinstance(annotation, str):
-        return any(name in annotation for name in names)
-    return get_origin(annotation) in origins or annotation in origins
+        return False
+    if annotation in origins or get_origin(annotation) in origins:
+        return True
+    origin = get_origin(annotation)
+    if origin in (Annotated, Union, UnionType):
+        return any(
+            _annotation_has_origin_or_name(argument, origins, names)
+            for argument in get_args(annotation)[:1]
+        ) if origin is Annotated else any(
+            _annotation_has_origin_or_name(argument, origins, names)
+            for argument in get_args(annotation)
+        )
+    return False
+
+
+def _supports_call_shape(handler: Callable[..., object]) -> bool:
+    try:
+        inspect.signature(handler).bind(object(), object())
+    except (TypeError, ValueError):
+        return False
+    return True
 
 
 def _supports_unary_handler(handler: Callable[..., object]) -> bool:
+    if not _supports_call_shape(handler):
+        return False
     target = _callable_target(handler)
     if inspect.iscoroutinefunction(target):
         return True
     return _annotation_has_origin_or_name(
         _return_annotation(handler),
-        (Awaitable,),
+        (Awaitable, Coroutine),
         ("Awaitable", "Coroutine"),
     )
 
 
 def _supports_streaming_handler(handler: Callable[..., object]) -> bool:
+    if not _supports_call_shape(handler):
+        return False
     target = _callable_target(handler)
     if inspect.isasyncgenfunction(target):
         return True
@@ -265,34 +306,56 @@ def validate_application_contract(application: object) -> None:
         )
 
 
-def _close_awaitable(value: object) -> None:
-    """Best-effort synchronous cleanup for a rejected awaitable."""
-
-    def close_candidate(candidate: object) -> None:
-        try:
-            close = candidate.close  # type: ignore[attr-defined]
-        except AttributeError:
-            return
-        if callable(close):
-            try:
-                close()
-            except Exception:
-                return
-
+async def _close_awaitable(value: object) -> None:
+    """Best-effort async cleanup that never replaces the primary exception."""
     pending: list[object] = [value]
     seen: set[int] = set()
+    wrapped_attributes = (
+        "inner",
+        "_inner",
+        "coro",
+        "_coro",
+        "awaitable",
+        "_awaitable",
+        "wrapped",
+        "_wrapped",
+        "underlying",
+        "_underlying",
+    )
     while pending:
         candidate = pending.pop()
         if id(candidate) in seen:
             continue
         seen.add(id(candidate))
         if isinstance(candidate, asyncio.Future):
-            candidate.cancel()
-        close_candidate(candidate)
-        for attribute in ("inner", "_inner", "coro", "_coro", "awaitable", "_awaitable"):
+            cancel_ok = True
+            try:
+                candidate.cancel()
+            except BaseException:
+                cancel_ok = False
+            if cancel_ok and candidate is not asyncio.current_task():
+                try:
+                    await candidate
+                except BaseException:
+                    cancel_ok = False
+        try:
+            close = getattr(candidate, "close", None)
+        except BaseException:
+            close = None
+        if callable(close):
+            try:
+                closed = close()
+            except BaseException:
+                closed = None
+            if inspect.isawaitable(closed):
+                try:
+                    await closed
+                except BaseException:
+                    pending.append(closed)
+        for attribute in wrapped_attributes:
             try:
                 nested = getattr(candidate, attribute, None)
-            except Exception:
+            except BaseException:
                 nested = None
             if nested is not None and inspect.isawaitable(nested):
                 pending.append(nested)
@@ -307,9 +370,9 @@ async def _close_async_iterator(iterator: object) -> None:
         if inspect.isawaitable(result):
             try:
                 await result
-            except Exception:
-                _close_awaitable(result)
-    except Exception:
+            except BaseException:
+                await _close_awaitable(result)
+    except BaseException:
         return
 
 
@@ -337,10 +400,13 @@ async def dispatch_unary(
     try:
         awaited = await result
     except TypeError as exc:
-        _close_awaitable(result)
+        await _close_awaitable(result)
         raise _invalid_response(
             f"{operation.value} handler returned a malformed awaitable"
         ) from exc
+    except BaseException:
+        await _close_awaitable(result)
+        raise
     return _validate_response(operation, spec, awaited)
 
 
@@ -364,16 +430,43 @@ async def dispatch_streaming(
     except TypeError as exc:
         raise _invalid_response(f"{operation.value} handler invocation is malformed") from exc
     if inspect.isawaitable(stream):
-        _close_awaitable(stream)
+        await _close_awaitable(stream)
         raise _invalid_response(f"{operation.value} handler must return an async iterator")
+    iterator: object | None = None
     try:
-        iterator = aiter(cast(AsyncIterable[object], stream))
+        try:
+            iterator_factory = cast(AsyncIterable[object], stream).__aiter__
+            iterator = iterator_factory()
+            if inspect.isawaitable(iterator):
+                await _close_awaitable(iterator)
+                raise TypeError("async iterator factory returned an awaitable")
+            next_method = getattr(iterator, "__anext__", None)
+            if not callable(next_method):
+                raise TypeError("async iterator has no __anext__")
+        except TypeError as exc:
+            await _close_async_iterator(iterator if iterator is not None else stream)
+            if iterator is not None and iterator is not stream:
+                await _close_async_iterator(stream)
+            raise _invalid_response(
+                f"{operation.value} handler must return an async iterator"
+            ) from exc
+        except BaseException:
+            await _close_async_iterator(iterator if iterator is not None else stream)
+            if iterator is not None and iterator is not stream:
+                await _close_async_iterator(stream)
+            raise
     except TypeError as exc:
         raise _invalid_response(f"{operation.value} handler must return an async iterator") from exc
     try:
-        async for item in iterator:
+        while True:
+            try:
+                item = await next_method()
+            except StopAsyncIteration:
+                break
+            except TypeError as exc:
+                raise _invalid_response(
+                    f"{operation.value} iterator produced an invalid item"
+                ) from exc
             yield _validate_response(operation, spec, item)
-    except TypeError as exc:
-        raise _invalid_response(f"{operation.value} iterator produced an invalid item") from exc
     finally:
         await _close_async_iterator(iterator)

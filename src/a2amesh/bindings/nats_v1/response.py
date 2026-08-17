@@ -42,6 +42,10 @@ class BindingError:
     retryable: bool
 
     def __post_init__(self) -> None:
+        if type(self.type) is not str or type(self.message) is not str:
+            raise BindingValidationError("error fields must be plain strings")
+        if type(self.retryable) is not bool:
+            raise BindingValidationError("error.retryable must be boolean")
         if not re.fullmatch(r"^[A-Za-z][A-Za-z0-9_]{0,127}$", self.type):
             raise BindingValidationError("error.type is invalid")
         if not self.message or len(self.message) > 4096:
@@ -66,6 +70,8 @@ class BindingResponseEnvelope:
     error: BindingError | None = None
 
     def __post_init__(self) -> None:
+        if type(self.config_generation) is not int:
+            raise BindingValidationError("configGeneration must be an integer")
         if not _SAFE_TOKEN.fullmatch(self.request_id):
             raise BindingValidationError("requestId is not a safe token")
         if not 1 <= self.config_generation <= 9_007_199_254_740_991:
@@ -79,7 +85,7 @@ class BindingResponseEnvelope:
                 "streaming success must use StreamSessionOpenedV1, not a one-shot payload"
             )
         expected_type = OPERATION_SPECS[self.operation].response_type
-        if not isinstance(self.payload, expected_type):
+        if type(self.payload) is not expected_type:
             raise BindingValidationError(
                 f"response payload for {self.operation.value} must be {expected_type.__name__}"
             )

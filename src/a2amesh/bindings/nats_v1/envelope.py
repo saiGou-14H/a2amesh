@@ -94,6 +94,12 @@ class BindingRequestEnvelope:
     payload: ProtobufMessage
 
     def __post_init__(self) -> None:
+        if type(self.config_generation) is not int or not (
+            1 <= self.config_generation <= 9_007_199_254_740_991
+        ):
+            raise BindingValidationError(
+                "configGeneration must be a positive JSON safe integer"
+            )
         if not _SAFE_TOKEN.fullmatch(self.request_id):
             raise BindingValidationError("requestId is not a safe token")
         if not _SAFE_TOKEN.fullmatch(self.caller_instance_id):
@@ -102,8 +108,7 @@ class BindingRequestEnvelope:
             raise BindingValidationError("callerAgentId is invalid")
         if not _AGENT_ID.fullmatch(self.target_agent_id):
             raise BindingValidationError("targetAgentId is invalid")
-        if self.config_generation < 1:
-            raise BindingValidationError("configGeneration must be positive")
+
         if self.operation in _STREAMING_OPERATIONS:
             if self.stream_open_id is None or not _SAFE_TOKEN.fullmatch(self.stream_open_id):
                 raise BindingValidationError("streamOpenId is required for streaming operations")
@@ -125,7 +130,7 @@ class BindingRequestEnvelope:
         ):
             raise BindingValidationError("AuthContext is not valid at sentAt")
         expected_type = OPERATION_SPECS[self.operation].request_type
-        if not isinstance(self.payload, expected_type):
+        if type(self.payload) is not expected_type:
             raise BindingValidationError(
                 f"payload type for {self.operation.value} must be {expected_type.__name__}"
             )

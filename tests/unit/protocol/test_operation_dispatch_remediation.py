@@ -1,0 +1,301 @@
+"""RED regressions for C1-3 cleanup and static-contract validation."""
+
+from __future__ import annotations
+
+import asyncio
+import functools
+import json
+from collections.abc import Awaitable
+from dataclasses import replace
+from pathlib import Path
+from typing import Annotated
+
+import pytest
+from a2a.utils.errors import InvalidAgentResponseError, InvalidParamsError
+
+from a2amesh import protocol
+from a2amesh.bindings.nats_v1.envelope import BindingRequestEnvelope, BindingValidationError
+from a2amesh.bindings.nats_v1.response import BindingError, BindingResponseEnvelope
+from a2amesh.bindings.nats_v1.transport import (
+    _safe_a2a_error_fields,
+    _safe_binding_error_fields,
+)
+from a2amesh.core import (
+    OPERATION_SPECS,
+    CanonicalRequestContext,
+    Operation,
+    dispatch_streaming,
+    dispatch_unary,
+    validate_application_contract,
+)
+from a2amesh.identity import Principal
+
+FIXTURES = Path(__file__).parents[2] / "fixtures" / "a2a_v1"
+
+
+def context() -> CanonicalRequestContext:
+    return CanonicalRequestContext(
+        request_id="cleanup-request-001",
+        principal=Principal("agent:caller", "agent"),
+        target_agent_id="worker-a",
+        config_generation=1,
+    )
+
+
+class AsyncCloseAwaitable:
+    def __init__(self) -> None:
+        self.closed = False
+
+    def __await__(self):
+        raise TypeError("malformed await protocol")
+
+    async def close(self) -> None:
+        self.closed = True
+
+
+class CancelRaisesFuture(asyncio.Future[object]):
+    def cancel(self, msg: object = None) -> bool:
+        del msg
+        raise RuntimeError("cancel exploded")
+
+    def __await__(self):
+        raise TypeError("malformed future protocol")
+
+
+class WrappedOnlyAwaitable:
+    def __init__(self) -> None:
+        self.closed = False
+        self.wrapped = asyncio.sleep(3600)
+
+    def __await__(self):
+        raise RuntimeError("await protocol runtime")
+
+    def close(self) -> None:
+        self.closed = True
+
+
+class BadAiter:
+    def __init__(self, error: BaseException) -> None:
+        self.error = error
+        self.closed = False
+
+    def __aiter__(self):
+        raise self.error
+
+    async def aclose(self) -> None:
+        self.closed = True
+
+
+@pytest.mark.asyncio
+async def test_async_close_result_is_awaited_during_cleanup() -> None:
+    value = AsyncCloseAwaitable()
+
+    class Application:
+        def get_task(self, request, request_context):
+            del request, request_context
+            return value
+
+    with pytest.raises(InvalidAgentResponseError):
+        await dispatch_unary(
+            Application(),
+            Operation.GET_TASK,
+            protocol.GetTaskRequest(id="task-001"),
+            context(),
+        )
+    assert value.closed is True
+
+
+@pytest.mark.asyncio
+async def test_cleanup_cancel_failure_cannot_escape_as_runtime_error() -> None:
+    value = CancelRaisesFuture()
+
+    class Application:
+        def get_task(self, request, request_context):
+            del request, request_context
+            return value
+
+    with pytest.raises(InvalidAgentResponseError):
+        await dispatch_unary(
+            Application(),
+            Operation.GET_TASK,
+            protocol.GetTaskRequest(id="task-001"),
+            context(),
+        )
+
+
+@pytest.mark.asyncio
+async def test_runtime_malformed_awaitable_preserves_error_and_closes_wrapped_coroutine() -> None:
+    value = WrappedOnlyAwaitable()
+
+    class Application:
+        def get_task(self, request, request_context):
+            del request, request_context
+            return value
+
+    with pytest.raises(RuntimeError, match="await protocol runtime"):
+        await dispatch_unary(
+            Application(),
+            Operation.GET_TASK,
+            protocol.GetTaskRequest(id="task-001"),
+            context(),
+        )
+    assert value.closed is True
+    assert value.wrapped.cr_frame is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("error", [TypeError("bad aiter"), RuntimeError("aiter runtime")])
+async def test_aiter_failure_closes_original_stream_and_preserves_runtime(
+    error: BaseException,
+) -> None:
+    value = BadAiter(error)
+
+    class Application:
+        def send_streaming_message(self, request, request_context):
+            del request, request_context
+            return value
+
+    stream = dispatch_streaming(
+        Application(),
+        Operation.SEND_STREAMING_MESSAGE,
+        protocol.SendMessageRequest(),
+        context(),
+    )
+    if isinstance(error, TypeError):
+        with pytest.raises(InvalidAgentResponseError):
+            await anext(stream)
+    else:
+        with pytest.raises(RuntimeError, match="aiter runtime"):
+            await anext(stream)
+    assert value.closed is True
+
+
+def _valid_application() -> object:
+    application = type("Application", (), {})()
+
+    async def unary(request, request_context):
+        del request, request_context
+        return protocol.Task()
+
+    async def streaming(request, request_context):
+        del request, request_context
+        yield protocol.StreamResponse()
+
+    for spec in OPERATION_SPECS.values():
+        setattr(application, spec.handler_name, streaming if spec.streaming else unary)
+    return application
+
+
+def test_validator_rejects_false_string_annotation_and_wrong_arity() -> None:
+    application = _valid_application()
+
+    def false_name(request, request_context):
+        del request, request_context
+        return protocol.Task()
+
+    false_name.__annotations__["return"] = "NotAnAwaitable"
+
+    def wrong_arity(request) -> Awaitable[protocol.Task]:
+        del request
+        return asyncio.sleep(0)
+
+    application.get_task = false_name
+    with pytest.raises(InvalidAgentResponseError, match="modality"):
+        validate_application_contract(application)
+
+    application = _valid_application()
+    application.get_task = wrong_arity
+    with pytest.raises(InvalidAgentResponseError, match="modality"):
+        validate_application_contract(application)
+
+
+def test_validator_accepts_annotated_and_partial_async_handlers() -> None:
+    application = _valid_application()
+
+    async def annotated(request, request_context) -> Annotated[Awaitable[protocol.Task], "ok"]:
+        del request, request_context
+        return protocol.Task()
+
+    async def plain_async(request, request_context):
+        del request, request_context
+        return protocol.Task()
+
+    application.get_task = annotated
+    application.list_tasks = functools.partial(plain_async)
+    validate_application_contract(application)
+
+
+@pytest.mark.asyncio
+async def test_cleanup_regression_tests_use_real_dispatch_path() -> None:
+    with pytest.raises(InvalidParamsError):
+        await dispatch_unary(
+            object(),
+            Operation.GET_TASK,
+            protocol.CancelTaskRequest(id="wrong"),
+            context(),
+        )
+
+
+def test_active_request_boundary_rejects_bool_float_generation_and_spoof_payload() -> None:
+    data = json.loads((FIXTURES / "nats_send_message_request.json").read_text())
+    envelope = BindingRequestEnvelope.from_dict(data)
+    with pytest.raises(BindingValidationError, match="configGeneration"):
+        replace(envelope, config_generation=True)
+    with pytest.raises(BindingValidationError, match="configGeneration"):
+        replace(envelope, config_generation=1.0)
+
+    class Claimed:
+        @property
+        def __class__(self):
+            return protocol.SendMessageRequest
+
+    with pytest.raises(BindingValidationError, match="payload"):
+        replace(envelope, payload=Claimed())
+
+
+def test_active_response_boundary_rejects_bool_float_and_spoof_payload() -> None:
+    for generation in (True, 1.0):
+        with pytest.raises(BindingValidationError, match="configGeneration"):
+            BindingResponseEnvelope(
+                operation=Operation.GET_TASK,
+                request_id="response-001",
+                config_generation=generation,
+                payload=protocol.Task(),
+            )
+
+    class Claimed:
+        @property
+        def __class__(self):
+            return protocol.Task
+
+    with pytest.raises(BindingValidationError, match="response payload"):
+        BindingResponseEnvelope(
+            operation=Operation.GET_TASK,
+            request_id="response-001",
+            config_generation=1,
+            payload=Claimed(),
+        )
+
+
+def test_binding_error_retryable_is_exact_bool() -> None:
+    with pytest.raises(BindingValidationError, match="retryable"):
+        BindingError("InternalError", "fixed", 1)  # type: ignore[arg-type]
+
+
+def test_transport_error_mappers_never_stringify_or_hash_hostile_values() -> None:
+    class DerivedUnknown(InvalidParamsError):
+        def __str__(self) -> str:
+            raise RuntimeError("must not stringify")
+
+    class HostileHash(str):
+        def __hash__(self) -> int:
+            raise RuntimeError("must not hash")
+
+    assert _safe_a2a_error_fields(DerivedUnknown(message="secret")) == (
+        "InternalError",
+        "canonical application error",
+    )
+    assert _safe_binding_error_fields(HostileHash("InternalError"), object()) == (
+        "InternalError",
+        "canonical application error",
+    )

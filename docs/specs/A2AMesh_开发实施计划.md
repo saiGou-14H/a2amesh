@@ -442,15 +442,17 @@ tests/unit/protocol/
 
 ### 8.6 C1-3 当前模块：11 操作 transport-independent dispatch contract
 
-截至 2026-08-17 12:56（Asia/Shanghai），C1-3 第一版 `713c171` 的独立复审为 `BLOCKED`；第二代 hardening 正在独立工作树形成，尚未通过新的同树复审：
+截至 2026-08-17 13:55（Asia/Shanghai），C1-3 第一版 `713c171` 和第二代 `c4ba60a` 的独立复审均为 `BLOCKED`；第三代 hardening 正在独立工作树形成，尚未通过新的同树复审：
 
 - Core 使用唯一 `OPERATION_SPECS` 解析 operation，并对 11 个官方 request/response protobuf 使用 `type(value) is expected_type`；空 tenant、canonical context、handler 存在性和 unary/streaming 模态均在统一入口校验；
 - request/tenant 结构校验先于 canonical context 校验；`CanonicalRequestContext.config_generation` 使用严格 exact-int；错误消息统一有界、可打印、固定fallback，不把超长动态类型名带入官方错误；
-- unary handler invocation/awaitable 的 malformed `TypeError` 映射 `InvalidAgentResponseError`；拒绝的 coroutine/custom awaitable/Future 做best-effort close/cancel；streaming iterator在坏`__anext__`、错误item和消费结束路径执行`aclose`；
-- `validate_application_contract` 除11个handler存在性外，静态拒绝明显不可能的同步/错误模态；它不是capability readiness、业务可执行性、Task持久化或真实broker探测，运行时dispatch仍是最终合同门禁；
-- 新增独立硬编码11-operation registry matrix，及伪造protobuf、malformed awaitable/iterator、资源清理、校验顺序、bool generation、错误消息上限和validator模态负例；hardening专项 `11 passed`，原C1-3定向 `39 passed`，当前全量 `419 passed, 8 skipped`，Ruff、compileall、diff-check通过；
+- 第二代复审确认的P1：Future `cancel()`、`close`属性/调用、async `close()`返回值和`wrapped`字段清理不total；awaitable抛`RuntimeError`时未清理；`__aiter__`建立阶段抛错时原stream未`aclose`；完整suite出现`1 failed`，不能作为green checkpoint；
+- 第三代把拒绝awaitable cleanup改为异步fail-safe流程：隔离cancel/getattr/close异常、等待async close结果、遍历明确wrapped字段，并在`TypeError`映射或其它异常原样重抛前完成清理；streaming显式建立iterator，建立失败时关闭原stream，逐项`__anext__`并在所有终止路径`aclose`；
+- `validate_application_contract` 使用`get_type_hints/get_origin/get_args`结构化解析`Annotated`、Union、Awaitable/Coroutine及AsyncIterator/Iterable/Generator，支持async函数与`functools.partial`，并用signature bind拒绝错误调用形状；不再对字符串annotation做substring匹配；
+- 相邻活动NATS request/response补exact generation/payload/retryable边界；transport错误只按exact官方A2A类型白名单输出固定有界字段，不调用外部异常`str()`，响应构造失败还有固定二级fallback；
+- 新增独立硬编码11-operation registry matrix，及伪造protobuf、malformed awaitable/iterator、资源清理、aiter建立、校验顺序、bool generation、错误上限、validator误判/误拒和NATS边界负例；当前Core focused `51 passed`、NATS request/response/transport `29 passed`、全量 `431 passed, 8 skipped`，8/8机器门禁与Ruff通过；
 - 本模块只针对transport-independent dispatch contract，不实现业务Task持久化、capability实现、version/lease/fencing、Redis CAS、真实stream broker或完整A2A生产互操作；不能宣称C1整体完成或生产就绪；
-- 第二代checkpoint、独立复审和提交后完整门禁完成前保持 `candidate/pending-review`，不得写 `[verified]`。
+- 第三代checkpoint、独立复审和提交后完整门禁完成前保持 `candidate/pending-review`，不得写 `[verified]`。
 
 ### 8.7 退出门禁（C1 整体）
 
