@@ -13,6 +13,7 @@ import nkeys
 import pytest
 from a2a.utils.errors import InvalidParamsError
 
+from a2amesh import protocol
 from a2amesh.bindings.nats_v1 import AuthContext as WireAuthContext
 from a2amesh.bindings.nats_v1 import (
     BindingAuthVerifier,
@@ -22,6 +23,7 @@ from a2amesh.bindings.nats_v1 import (
     StreamControlAuthVerifier,
     StreamControlEnvelopeV1,
     StreamFrameCursorV1,
+    StreamSessionFrameV1,
     StreamSessionOpenedV1,
     sign_request_envelope,
     sign_stream_control_envelope,
@@ -109,6 +111,22 @@ class MutableClaim(str):
 
     def __eq__(self, other: object) -> bool:
         return other == self.accepted
+
+
+class ForgedWireString(str):
+    def __new__(cls, value: str, accepted: str) -> ForgedWireString:
+        result = str.__new__(cls, value)
+        result.accepted = accepted
+        return result
+
+    def __hash__(self) -> int:
+        return hash(self.accepted)
+
+    def __eq__(self, other: object) -> bool:
+        return other == self.accepted
+
+    def __ne__(self, other: object) -> bool:
+        return other != self.accepted
 
 
 class MutableCredential:
@@ -382,6 +400,20 @@ def test_stream_payloads_and_digest_context_reject_mutable_strings() -> None:
         )
 
 
+def test_all_verifier_sealed_slots_cannot_be_deleted() -> None:
+    key_pair = make_key_pair()
+    signer = nkey_public_key(key_pair)
+    policy = legacy_policy(signer)
+    verifiers = (
+        AuthContextVerifier({signer: policy}, clock_skew_seconds=30),
+        BindingAuthVerifier({signer: policy}, MemoryReplayGuard()),
+        StreamControlAuthVerifier({signer: policy}, MemoryReplayGuard()),
+    )
+    for verifier in verifiers:
+        with pytest.raises(AttributeError):
+            del verifier._sealed  # type: ignore[attr-defined]
+
+
 def test_nats_server_auth_reference_cannot_be_replaced() -> None:
     server = V1NatsServer(
         None,  # type: ignore[arg-type]
@@ -527,6 +559,63 @@ def test_stream_opened_rejects_datetime_subclass_and_forged_delivery_binding() -
     raw["expiresAt"] = MutableClaim(raw["expiresAt"], raw["expiresAt"])
     with pytest.raises(BindingValidationError, match="plain string"):
         StreamSessionOpenedV1.from_dict(raw)
+
+
+def test_stream_from_dict_rejects_hostile_wire_schema_and_operation_strings() -> None:
+    opened = stream_opened_fixture()
+    frame_data = opened.initial_frame.to_dict()
+    frame_data["schemaVersion"] = ForgedWireString("999.0", "1.0")
+    with pytest.raises(BindingValidationError, match="schemaVersion"):
+        StreamSessionFrameV1.from_dict(frame_data)
+
+    opened_data = opened.to_dict()
+    opened_data["schemaVersion"] = ForgedWireString("999.0", "1.0")
+    with pytest.raises(BindingValidationError, match="schemaVersion"):
+        StreamSessionOpenedV1.from_dict(opened_data)
+
+    opened_data = opened.to_dict()
+    opened_data["operation"] = ForgedWireString("DeleteTask", "SendStreamingMessage")
+    with pytest.raises(BindingValidationError, match="operation"):
+        StreamSessionOpenedV1.from_dict(opened_data)
+
+
+def test_stream_frame_copies_protobuf_and_rejects_post_construction_mutation() -> None:
+    opened = stream_opened_fixture()
+    source = opened.initial_frame.canonical_stream_response
+    frame = StreamSessionFrameV1.create(
+        stream_session_id=opened.stream_session_id,
+        stream_open_id=opened.stream_open_id,
+        sequence=0,
+        event_seq=opened.snapshot_event_seq,
+        final=False,
+        canonical_stream_response=source,
+    )
+    original_task_id = frame.canonical_stream_response.task.id
+    source.task.id = "mutated-source"
+    assert frame.canonical_stream_response.task.id == original_task_id
+
+    fresh = protocol.StreamResponse()
+    fresh.CopyFrom(frame.canonical_stream_response)
+    mutated_frame = StreamSessionFrameV1.create(
+        stream_session_id=opened.stream_session_id,
+        stream_open_id=opened.stream_open_id,
+        sequence=0,
+        event_seq=opened.snapshot_event_seq,
+        final=False,
+        canonical_stream_response=fresh,
+    )
+    mutated_frame.canonical_stream_response.task.id = "mutated-internal"
+    with pytest.raises(BindingValidationError, match="payloadDigest"):
+        mutated_frame.to_dict()
+
+    cursor = StreamFrameCursorV1(
+        stream_session_id=opened.stream_session_id,
+        stream_open_id=opened.stream_open_id,
+        task_id=opened.task_id,
+        snapshot_event_seq=opened.snapshot_event_seq,
+    )
+    with pytest.raises(BindingValidationError, match="payloadDigest"):
+        cursor.accept(mutated_frame)
 
 
 def test_wire_auth_context_type_is_not_confused_with_legacy_context() -> None:

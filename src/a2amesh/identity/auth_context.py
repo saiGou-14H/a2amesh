@@ -144,18 +144,28 @@ def sign_auth_context(context: AuthContext, key_pair: nkeys.KeyPair) -> AuthProo
     )
 
 
+_AUTH_CONTEXT_VERIFIER_SEALED_FIELDS = frozenset(
+    {"_signer_policies", "clock_skew_seconds", "_sealed", "__class__"}
+)
+
+
 class AuthContextVerifier:
     """Verify signatures, expiry, target binding, and request replay."""
 
     __slots__ = ("_signer_policies", "clock_skew_seconds", "_seen", "_sealed")
     _SEALED_FIELDS: ClassVar[frozenset[str]] = frozenset(
-        {"_signer_policies", "clock_skew_seconds", "_sealed"}
+        {"_signer_policies", "clock_skew_seconds", "_sealed", "__class__"}
     )
 
     def __setattr__(self, name: str, value: object) -> None:
-        if getattr(self, "_sealed", False) and name in self._SEALED_FIELDS:
+        if getattr(self, "_sealed", False) and name in _AUTH_CONTEXT_VERIFIER_SEALED_FIELDS:
             raise AttributeError("AuthContextVerifier configuration is immutable")
         object.__setattr__(self, name, value)
+
+    def __delattr__(self, name: str) -> None:
+        if getattr(self, "_sealed", False) and name in _AUTH_CONTEXT_VERIFIER_SEALED_FIELDS:
+            raise AttributeError("AuthContextVerifier configuration is immutable")
+        object.__delattr__(self, name)
 
     def __init__(
         self,

@@ -249,15 +249,23 @@ def sign_stream_control_envelope(
     )
 
 
+_STREAM_CONTROL_VERIFIER_SEALED_FIELDS = frozenset({"_common", "_sealed", "__class__"})
+
+
 class StreamControlAuthVerifier:
     """Authenticate a stream control envelope and bind it to its literal subject."""
 
     __slots__ = ("_common", "_sealed")
 
     def __setattr__(self, name: str, value: object) -> None:
-        if getattr(self, "_sealed", False) and name in {"_common", "_sealed"}:
+        if getattr(self, "_sealed", False) and name in _STREAM_CONTROL_VERIFIER_SEALED_FIELDS:
             raise AttributeError("StreamControlAuthVerifier configuration is immutable")
         object.__setattr__(self, name, value)
+
+    def __delattr__(self, name: str) -> None:
+        if getattr(self, "_sealed", False) and name in _STREAM_CONTROL_VERIFIER_SEALED_FIELDS:
+            raise AttributeError("StreamControlAuthVerifier configuration is immutable")
+        object.__delattr__(self, name)
 
     def __init__(
         self,

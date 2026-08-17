@@ -32,6 +32,16 @@ AUTH_ALGORITHM = "nkey-ed25519"
 RPC_SUBJECT_PREFIX = "a2a.v1.rpc."
 _REPLY_PREFIX = re.compile(r"^_INBOX\.a2amesh\.[A-Za-z0-9_-]+\.$")
 _JSON_SAFE_MAX = 9_007_199_254_740_991
+_NATS_AUTH_VERIFIER_SEALED_FIELDS = frozenset(
+    {
+        "_signer_policies",
+        "_replay_guard",
+        "_clock_skew",
+        "_max_auth_lifetime",
+        "_sealed",
+        "__class__",
+    }
+)
 
 
 class SignedBindingEnvelope(Protocol):
@@ -149,13 +159,19 @@ class BindingAuthVerifier:
             "_clock_skew",
             "_max_auth_lifetime",
             "_sealed",
+            "__class__",
         }
     )
 
     def __setattr__(self, name: str, value: object) -> None:
-        if getattr(self, "_sealed", False) and name in self._SEALED_FIELDS:
+        if getattr(self, "_sealed", False) and name in _NATS_AUTH_VERIFIER_SEALED_FIELDS:
             raise AttributeError("BindingAuthVerifier configuration is immutable")
         object.__setattr__(self, name, value)
+
+    def __delattr__(self, name: str) -> None:
+        if getattr(self, "_sealed", False) and name in _NATS_AUTH_VERIFIER_SEALED_FIELDS:
+            raise AttributeError("BindingAuthVerifier configuration is immutable")
+        object.__delattr__(self, name)
 
     def __init__(
         self,
