@@ -13,7 +13,11 @@
 
 G0 正式通过仅表示关键状态、竞态、时序、版本、ACL 和恢复规则已有唯一设计答案，并须绑定复审台账/content manifest；**不表示代码已经实现、官方 A2A 黑盒已经通过、三机部署已经完成或生产已经可用**。本候选集在二次独立复审关闭前不得标记正式通过。
 
-### 1.1 最新架构图
+### 1.1 当前证据分层（R11 checkpoint）
+
+当前仍是未冻结dirty候选；`HEAD=b9e929d4ed838099218e9d5102eb0ea06627c39b`仅是本轮修改前的历史锚点，tracked/untracked数量、diff SHA、index/tree OID均不得再作为当前release evidence，必须在P1修复、全量门禁和二次独立复审完成后一次性重算并由checkpoint commit绑定。架构资产path allowlist当前为53条，签名SHA-256=`7678eb87225928330523c8adfbef7de74d8c4986b1868f5d00f59f42f626db58`。已观察到的局部门禁只证明：`ArtifactHoldExpiryCASState`纯Python确定性合同与State-side SCAN allocation/SCAN authority/REPLAY current-authority cross-record binding（最新Artifact专项`85 passed`）、V1.6架构资产/allowlist（`9 passed`）、强制真实Chromium wrapper gate（`1 passed`）。它们不证明全量pytest、JetStream/真实NATS AuthProof与ACL、Redis Function/Lua及restart durability、Windows/NAT三机、多进程故障恢复、Object Store或官方A2A黑盒；这些仍是后续release gate/未验收能力。当前候选仍不得使用`[verified]`、“官方兼容”或“生产就绪”。
+
+### 1.2 最新架构图
 
 [![A2AMesh V1.6 最新架构](../assets/A2AMesh_V1.6_Architecture.svg)](../assets/A2AMesh_V1.6_Architecture.html)
 
@@ -81,7 +85,7 @@ G0 正式通过仅表示关键状态、竞态、时序、版本、ACL 和恢复�
 | G0-08 Binding version | NATS §16.1、§16.5 | `BindingCapabilities` / `TaskEventEnvelope` | API §14 | `TEST-BINDING-VERSION-001` |
 | G0-09 profile×operation | 总体 §11、§12.1 | cumulative profile lattice | Agent Card §3、§14；API §4 | `TEST-PROFILE-OPS-001` |
 | G0-10 NATS ACL/stream session | NATS §4.3、§9.4、§16.6 | NKey permission matrix / `DATA-STREAM-SESSION-001` | Config §3.2；Redis §5.21、§6.23 | `TEST-NATS-ACL-001`、`TEST-NATS-STREAM-SESSION-001` |
-| G0-11 Artifact races | Artifact §4～§8 | `ArtifactAccessTombstone` / `ArtifactHold` / typed ref | Redis §5.13、§6.11 | `TEST-ARTIFACT-RACE-001`、`TEST-ARTIFACT-AUTH-RETENTION-001`、`TEST-ARTIFACT-HOLD-REF-001` |
+| G0-11 Artifact races | Artifact §4～§5.6、§11 | `ArtifactAccessTombstone` / `ArtifactHold` / typed ref / `REPLAY_CLAIM` authority | Redis §5.13、§6.11；NATS §16.4、§16.6 | `TEST-ARTIFACT-RACE-001`、`TEST-ARTIFACT-AUTH-RETENTION-001`、`TEST-ARTIFACT-HOLD-REF-001`、`TEST-ARTIFACT-HOLD-EXPIRY-001`、`TEST-ARTIFACT-HOLD-REPLAY-001` |
 | G0-12 trusted config | Config §3、§3.3、§4、§7.1 | signed bundle / `components[]` / READY / `DATA-GATE-EVIDENCE-001` | Redis §5.14、§6.12 | `TEST-CONFIG-HASH-001`、`TEST-CONFIG-GENESIS-001`、`TEST-CONFIG-READY-AUTH-001`、`TEST-CONFIG-GATE-EVIDENCE-001` |
 | G0-13 reconciliation | 对账 §3、§6、§7 | `ResolutionRecord` / case matrix | Redis §5.15、§6.13 | `TEST-RECON-STATE-001`、`TEST-RECON-REOPEN-HISTORY-001` |
 | G0-14 Runtime containment | Runtime §8.5、§11 | `ContainmentProfile` / Merge Broker | Config §3.2；Redis §5.18 | `TEST-RUNTIME-CONTAINMENT-001`、`TEST-WORKSPACE-FENCE-001` |
@@ -163,7 +167,7 @@ G0 的通过条件是：每项恰有一个主权威、定义对象、支持文�
 | NFR-005 静默 heartbeat | Supervisor 独立协程、30s 事件采样 | TEST-LONG-001 |
 | NFR-006 重启一致性 | Redis AOF、dispatch/outbox claim、fencing | TEST-RECOVERY-001 |
 | NFR-007 隐私脱敏 | keyed pseudonym、低基数 metrics、Tool policy | TEST-SEC-001 |
-| NFR-008 不虚假 HA | 单 Linux SPOF 明示 | TEST-DOC-001 |
+| NFR-008 不虚假 HA | 单 Linux SPOF 明示 | TEST-DOC-001 / TEST-ASSET-ARCH-001 |
 | NFR-009 跨 Binding 身份 | Canonical Principal + immutable alias | TEST-IDENTITY-001 |
 | NFR-010 OAuth fail closed | TTL/JWKS cache/unknown kid reject | TEST-OAUTH-001 |
 | NFR-011 RTO | 服务 15 分钟、整机 4 小时 | TEST-DR-001 |

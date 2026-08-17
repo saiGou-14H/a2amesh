@@ -54,11 +54,24 @@
 
 ## 2. 当前状态与实施结论
 
-### 2.1 代码基线（2026-08-14）
+### 2.1 代码基线（2026-08-16）
 
-本次状态核验绑定代码基线 `d0ba51d2752feb754f6425e8f775361f3a764547`（`main`/`origin/main`，核验时工作树仅含本次 V1.6/V1.2 文档候选修改），维护者为 A2AMesh 项目维护者，最后核验时间 2026-08-14。当前代码仍是私有 NATS RPC 原型。源码/测试数量随提交变化，不在计划中手工维护；后续状态更新必须记录新的 commit SHA、dirty state、命令输出和证据 URI。
+本节记录的上一轮状态核验起始基线为 `9e5d9ea8da4a868b316f9a5e2172ce96d320a6c4`（`main`；核验时间 2026-08-16T18:57:39Z）。当前工作树包含尚未提交的R11-C状态合同、测试、规范和发布资产候选修改；该dirty state不是发布基线，必须在最终门禁通过后由checkpoint commit重新绑定。当前代码仍是私有 NATS RPC 原型；源码/测试数量随提交变化，不在计划中手工维护。后续状态更新必须记录新的commit SHA、dirty state、命令输出和证据 URI。
 
 V1.6/V1.2 当前为 **G0 候选设计集**：首轮独立复审问题已纳入修复，但必须在关闭复审、评审台账和 content manifest 完成后才能标记正式冻结；无论设计状态如何，均不表示 C0 代码、官方兼容或生产验收完成。
+
+### 2.1.1 R11 当前checkpoint（2026-08-16）
+
+本节是living status，不改写上面的历史起始基线。当前仍是未冻结dirty候选；`HEAD=b9e929d4ed838099218e9d5102eb0ea06627c39b`仅作本轮修改前历史锚点，先前记录的tracked/untracked数量与diff/tree指纹均已失效。P1修复、全量门禁及二次独立复审完成前不生成新的release fingerprint；最终checkpoint必须一次性记录HEAD、status、diff SHA、index/tree OID和scoped hashes。架构资产当前path allowlist为53条，签名SHA-256=`7678eb87225928330523c8adfbef7de74d8c4986b1868f5d00f59f42f626db58`。
+
+| 证据层 | 当前观察 | 能证明 | 不能证明 |
+|---|---|---|---|
+| 纯Python Artifact contract | `PYTHONDONTWRITEBYTECODE=1 uv run --extra test pytest -q tests/test_artifact_hold_expiry.py -p no:cacheprovider` → `85 passed` | strict wire、State-side SCAN allocation proof、SCAN authority seal、REPLAY current-authority pointer、cross-record fail-closed、单CAS write-set的确定性行为 | Redis Function/Lua、restart durability、真实NATS/AuthProof/ACL、跨进程/三机故障 |
+| 架构资产静态门禁 | `tests/test_architecture_assets.py` → `9 passed`；machine-edge allowlist exact、53条path签名allowlist、SVG/HTML twin bytes相同；`TEST-ASSET-ARCH-001` | 当前SVG/HTML的路径集合、角色标签和声明边界 | 运行时ACL、真实组件身份、Redis/NATS权限 |
+| 浏览器资产门禁 | `A2AMESH_REQUIRE_BROWSER_GATE=1 uv run --with playwright pytest -q tests/test_architecture_browser_smoke.py` → `1 passed` | 真实Chromium下HTML标准模式、无page error、视口/缩放/控件/布局约束 | 任何Redis/NATS/A2A/Windows/NAT/安全授权能力 |
+| 真实集成/发布 | 尚未完成 | — | 全量release verdict、官方A2A黑盒、Redis重启、NATS secure ACL/AuthProof、Windows NAT、多进程恢复、Object Store/生产就绪 |
+
+R11-C/R11-D局部GREEN不能关闭G0，也不能改变`private A2A-inspired NATS prototype`结论。最终release gate仍必须在最终dirty tree执行全量pytest、Ruff、JetStream、sdist隔离、强制Chromium及独立复审；未完成前checkpoint commit不得使用`[verified]`。
 
 ### 2.2 能力矩阵
 
@@ -75,6 +88,7 @@ V1.6/V1.2 当前为 **G0 候选设计集**：首轮独立复审问题已纳入�
 | 官方 Agent Card well-known | 缺失 | — | C5 实现 |
 | 官方 A2A v1 Application Core | 缺失 | — | C1 实现 |
 | Redis State Service | 缺失 | — | C2 实现 |
+| Config/Artifact可执行纯状态合同 | 部分原型 | `config_slots.py`、`state_contracts/artifact_hold.py`及专项测试 | 已覆盖RequiredSlot投影和Artifact Hold严格wire/ledger/单CAS write-set、REPLAY_CLAIM current authority、immutable candidate/base-commit digest binding；不等于Redis Function、持久化、NATS/AuthProof或secure ACL集成 |
 | Redis outbox/Event Relay | 缺失 | — | C2/C3 实现 |
 | Side-effect ledger/Adapter | 缺失 | — | C2/C4 实现 |
 | Capability grant/admission | 缺失 | — | C2/C4/C5 实现 |
@@ -435,7 +449,7 @@ tests/unit/protocol/
 14. 独立 effect-intent/effect-attempt Key 与唯一 CAS；prepare/begin/start/complete、仅 NOT_APPLIED 可新 attempt、陈旧 APPLYING→UNKNOWN 与唯一 case。
 15. capability grant generation/expiry 和全维 fail-closed 匹配。
 16. 全局/Principal queued/reserved/running、`reserved+running<=maxRunning`、FIFO/deficit/weight/round/cursor 持久 DRR；确定性 visit/cursor 规则、QUEUED→SELECTED→RUNNING 与 queue/dispatch deadline。
-17. Artifact metadata、owner tombstone、artifact-centric typed refs/source forward index、create/renew/release hold、add/remove ref、retention lock及完整 finalize/delete/Reaper CAS。
+17. Artifact metadata、owner tombstone、source-centric typed source commit与双向ref index（无独立add/remove ref）、create/renew/release hold、retention lock及完整finalize/delete/Reaper CAS；实现hold expiry持久due/SCAN candidate authority、immutable commit、`REPLAY_CLAIM` exact operation ledger/current-authority pointer和全局fence，绑定`authorizedCandidateDigest/baseCommitDigest`并支持Redis重启后的exact replay。
 18. 不可变 config bundle、components[] READY 全字段、WORM GenesisIntent/CommitReceipt 唯一提交点与 PREPARED/COMMITTED 恢复 saga、generation index root、active pointer-only CAS、publisher fencing。
 19. UNKNOWN 唯一 case；immutable ResolutionRecord/history/idempotency、claim、resolve/close/reopen 原子矩阵。
 20. immutable `DispatchTask` command、BLOCKED/PENDING/CLAIMED/SENT/ACCEPTED/ABORTED/DEAD、`mark_dispatch_sent/reclaim_expired_dispatch/accept_dispatch_and_start`、单调 attempt/token 和 sweeper。
@@ -460,6 +474,8 @@ effect timeout/断线 → UNKNOWN，禁止自动重试/取消成功
 grant 任一维度不匹配 → claim/queue 前拒绝
 Principal/global queue → 有界、公平、计数可回收
 Artifact finalize 中途失败 → blob/metadata/Task/outbox 不出现悬空成功
+Artifact hold SCAN/EXPIRE提交前后或丢响应 → due/candidate tombstone/commit/audit/outbox同CAS且exact replay
+REPLAY_CLAIM未过期时不同ID → reject且high-water不推进；过期后新ID只推进一次；Redis重启后current pointer与exact result不丢失
 config activate 并发/READY 超时 → 单 active generation 或完整回滚
 UNKNOWN 重复回调/并发 claim → 单 case、单 claimant、旧 fencing 拒绝
 Task 已返回后 kill Dispatcher → intent 被接管并 ACCEPTED 或在 deadline 确定 FAILED
@@ -486,7 +502,7 @@ Config/GateEvidence General JWS signatures[] → kid UTF-8严格升序、唯一�
 ### 10.2 任务
 
 1. Config Controller genesis crash-safe saga、GenesisIntent/CommitReceipt exact JWS fixture、每个WORM/主机/Redis crash point、RFC8785 config hash/JWS、validate/stage/可信READY、stable component publisher identity；实现DATA-GATE-EVIDENCE-001独立JWS、Config/GateEvidence `signatures[]` kid排序/threshold/负例、确定性aclDigest/readySetDigest、不可变报告校验、唯一gate-evidence-stage API/CLI、显式evidenceSha256 activation，以及rollout lease/maintenance traffic gate/candidate ACL exact-byte promote与失败恢复状态机，禁止报告回写bundle。
-2. 开发态私有Object Store fixture、Artifact Broker create/finalize/ticket/delete、hold create/renew/release、source-centric typed source commit、服务端checksum和Reaper竞态CAS；唯一HTTP path按source tuple，唯一NATS subject为`artifact.source.commit`，完整五字段refs一次可触及多个Artifact。
+2. 开发态私有Object Store fixture、Artifact Broker create/finalize/ticket/delete、hold create/renew/release、source-centric typed source commit、服务端checksum和Reaper竞态CAS；唯一HTTP path按source tuple，唯一NATS subject为`artifact.source.commit`，完整五字段refs一次可触及多个Artifact。Reaper垂直切片必须实现closed `SCAN|EXPIRE|REPLAY_CLAIM`真实Redis writer：持久due/scan/candidate/authority/high-water、immutable commit、claim exact request/result ledger与每个expire operation的current pointer；严格绑定`authorizedCandidateDigest/baseCommitDigest`、candidate lease duration上限`300000ms`、未过期claim排他、过期后更高fence接管、commit-before-reply及Redis重启exact replay，并通过`TEST-ARTIFACT-HOLD-EXPIRY-001`和`TEST-ARTIFACT-HOLD-REPLAY-001`。
 3. Reconciliation Service 的 OPEN/RESOLVED/CLOSED、独立claim/escalation、Evidence、resolutionHistory和stale APPLYING scanner；实现`recon.claim` closed ACQUIRE/RENEW/RELEASE/EXPIRE/ESCALATE、persistent claim/SLA due、scanner lease/fence/candidate exact replay、server-time逻辑过期及API claim/renew/release。
 4. Audit Relay 到本地不可变 append-only fixture，验证 State/non-State→AuditEnvelopeV1→outbox/WAL→exact Segment JWS→WORM receipt→ack，以及普通/轮换签名阈值；接口保持可替换为生产 WORM sink。
 5. 实现 DATA-RECOVERY-001 的canonical payload、非detached General JWS、Manifest/summary DAG/`indexRootDigest`、ArchiveTransition/Verification/Restore/Approval/Release receipts、checkpoint-source interface、delete journal、双人release和外部证据重建；实现独立Recovery Compactor、persistent due/scan/source lease/fence和archive写入→exact read-back→transition receipt→新summary/Manifest→独立递归验证→State hot-index CAS compaction，以及`TEST-DR-MANIFEST-DAG-001`/`TEST-DR-COMPACTION-001`全部crash/replay门禁。本阶段接入Redis/Object/config/audit与确定性JetStream fixture，C3提供真实JetStream source。
@@ -495,7 +511,7 @@ Config/GateEvidence General JWS signatures[] → kid UTF-8严格升序、唯一�
 ### 10.3 退出门禁
 
 - g1只能通过WORM commit唯一线性化；各PREPARED/COMMITTED crash point同digest可恢复、异digest/伪造marker拒绝，READY伪造/重放/过期均拒绝；TEST-CONFIG-GATE-EVIDENCE-001证明bundle→报告→evidence单向hash依赖、唯一API/CLI可达、报告/ACL/READY漂移拒绝且activate绑定evidenceSha256；TEST-CONFIG-ROLLOUT-001证明STAGED后才render/隔离测试、生产promote始终在维护门内、CAS失败恢复旧ACL或保持fail-closed；
-- Artifact finalize/terminal/delete/ticket/hold/ref/Reaper 并发不产生悬空引用、计数泄漏或复活对象；
+- Artifact finalize/terminal/delete/ticket/hold/ref/Reaper 并发不产生悬空引用、计数泄漏或复活对象；`TEST-ARTIFACT-HOLD-EXPIRY-001`与`TEST-ARTIFACT-HOLD-REPLAY-001`纯状态合同测试已通过并覆盖claim ledger/current pointer、strict wire、cross-record digest与逻辑lease；真实Redis Function、持久化/重启exact replay仍待C2/C3实现与验收，不把纯状态合同冒充真实集成；
 - stale APPLYING 自动形成唯一 UNKNOWN case，case 可 claim/evidence/resolve/close/reopen，ResolutionRecord/history 不可变；
 - State 与五类非 State 来源 Audit 重复投递幂等，global sequence、exact JWS、sealed segment、跨日 hash、轮换双签、WORM receipt 与 pseudonym 投影可验证；
 - Recovery Manifest双签、summary DAG/indexRoot、archive transition、Verification/Restore/双approval/Release exact JWS可递归验证；缺任一enabled source、summary node、archive exact bytes、receipt或水位不能宣布恢复，清空Redis后可只凭外部证据重建；C3完成后JetStream变为CORE必选source；Protected Local IPC journal在Core重启边界同digest逐字节复用、异digest/IN_FLIGHT不重执行；Config/GateEvidence多签kid排序与threshold负例通过；
@@ -538,7 +554,7 @@ nats/config/*.conf
 9. State Service NATS handler：连接认证身份覆盖 payload，所有 mutation/query 复用 C2 application interface。
 10. 11 操作语义套件复用 C1 tests。
 11. transport retry 换 requestId/AuthProof、稳定 messageId/dispatchId；同 requestId 重放固定拒绝。
-12. 逐身份ACL fixture覆盖全部88个`STATE_REQUEST_SUBJECTS_V1` literal、control、private inbox、`$JS.API`/delivery subject；Peer只可publish获授权RPC/Registry而不能Task mutation/events/他人inbox，Application Core独占task claim/get(GET|LIST)/cancel/append、push.config/stream.flush，Task Supervisor独占dispatch订阅与command.get/recover/heartbeat，State内置Admission Scheduler只经持久scheduler lease运行DRR，Reconciliation Service独占effect.scan-stale及recon.claim/recon.scan-due，Orchestrator独占plan.recovery.scan/Plan mutation，Recovery Compactor独占recovery.compact closed union，Ops Recovery独占outbox.recover，Config Controller独占stream-config.begin，只有JS Provisioner可调用broker-op及stream-config claim/complete，只有Config Controller可stage GateEvidenceRecord；ACL生成器向每个signed components[]同一NKey叠加且仅叠加config.ready。
+12. 逐身份ACL fixture覆盖全部89个`STATE_REQUEST_SUBJECTS_V1` literal、control、private inbox、`$JS.API`/delivery subject；Peer只可publish获授权RPC/Registry而不能Task mutation/events/他人inbox，Application Core独占task claim/get(GET|LIST)/cancel/append、push.config/stream.flush，Task Supervisor独占dispatch订阅与command.get/recover/heartbeat，State内置Admission Scheduler只经持久scheduler lease运行DRR，Artifact Hold Reaper独占artifact.hold.expire closed `SCAN|EXPIRE|REPLAY_CLAIM`且无Object Store凭据，higher-fence replay必须先持久化绑定`baseCommitDigest`的exact claim与current-authority pointer，未过期current claim禁止新ID，Artifact Adapter只可提交artifact.delete `REQUEST`，独立Artifact Delete Worker只可提交同subject `COMPLETE`并持有provider删除凭据，三者Principal/NKey selector两两不同；Reconciliation Service独占effect.scan-stale及recon.claim/recon.scan-due，Orchestrator独占plan.recovery.scan/Plan mutation，Recovery Compactor独占recovery.compact closed union，Ops Recovery独占outbox.recover，Config Controller独占stream-config.begin，只有JS Provisioner可调用broker-op及stream-config claim/complete，只有Config Controller可stage GateEvidenceRecord；ACL生成器向每个signed components[]同一NKey叠加且仅叠加config.ready。
 13. RFC 8785 canonical Envelope + NKey Ed25519 AuthContext 签名/验证，replySubject 纳入签名且限 caller 私有 prefix。
 14. signer/method/subject/expiry/requestId/deadline/Redis replay 校验；payload caller 字段不可信。
 15. `bindingSchemaVersion` 与 `a2aProtocolVersion` 分离，major reject、minor N/N-1 fixture。
@@ -558,7 +574,7 @@ nats/config/*.conf
 - Task claim 后 Core/Dispatcher/NATS 任一故障都由 durable intent 最终 ACCEPTED 或在 deadline 确定 FAILED；不存在永久 SUBMITTED 黑洞。
 - Cancel control 丢失时 Supervisor heartbeat/接管仍从 Redis 发现 cancelRequested。
 - Recovery Manifest 使用真实 JetStream stream/consumer checkpoint，缺失或与 Redis outbox 水位不一致时 fail closed。
-- `TEST-NATS-ACL-001`与`TEST-NATS-STREAM-SESSION-001`在真实broker通过：88/88 State subject有且仅有授权角色及READY overlay；Artifact Adapter→artifact.source.commit一次提交多Artifact完整ref集合可达且旧ref增删subject不存在；Peer→本地Application Core→State、Dispatch Worker→Task Supervisor→command.get/lease/accept、Reconciliation Service→claim/scan-due及Recovery Compactor→compact均可达且越权反例拒绝；单open reply及历史响应逐字节稳定；snapshot覆盖窗口不死锁；无inactive自动删除；跨Controller/Provisioner稳定接管；旧签名not-found/已消费ticket无法重放；final/expired清理无早终态、重复broker副作用或consumer泄漏；`TEST-IPC-REPLAY-001`证明Core journal重启边界不重复执行。
+- `TEST-NATS-ACL-001`与`TEST-NATS-STREAM-SESSION-001`是C3真实broker退出条件（当前未验收）：89/89 State subject有且仅有授权角色及READY overlay；Artifact Adapter→artifact.source.commit一次提交多Artifact完整ref集合可达且旧ref增删subject不存在，Adapter只能artifact.delete REQUEST、Artifact Delete Worker只能COMPLETE、Artifact Hold Reaper只能hold.expire SCAN|EXPIRE|REPLAY_CLAIM且claim必须持久化新authority；`TEST-ARTIFACT-HOLD-REPLAY-001`覆盖同ID幂等、过期接管、higher fence裸整数拒绝和snapshot evidence交叉绑定，三组件不同Principal/NKey selector且Reaper无provider delete credential；Peer→本地Application Core→State、Dispatch Worker→Task Supervisor→command.get/lease/accept、Reconciliation Service→claim/scan-due及Recovery Compactor→compact均可达且越权反例拒绝；单open reply及历史响应逐字节稳定；snapshot覆盖窗口不死锁；无inactive自动删除；跨Controller/Provisioner稳定接管；旧签名not-found/已消费ticket无法重放；final/expired清理无早终态、重复broker副作用或consumer泄漏；`TEST-IPC-REPLAY-001`证明Core journal重启边界不重复执行。
 
 ---
 
@@ -759,7 +775,7 @@ C7 按目标剖面执行，不强迫 CORE 等待可选 C6：发布路径可为 `
 - 服务重启 15 分钟、整机恢复 4 小时和整机丢失 RPO 15 分钟门禁；
 - P1 告警可送达；
 - 单 Linux SPOF 在运行手册明确。
-- candidate stage根据signed bundle的`RequiredSlotSetV1(profileName,bundle,deploymentDescriptor)`确定性生成`deliveryProfile.requiredSlots[]`，不再维护手写组件列表；每个stable slot以`(componentType,componentPrincipal,nodeId)`绑定不同Principal/NKey并通过自身`config.ready`报告CANDIDATE READY；production promote前复用同一stable slot set，在gated-passive生产维护域以相同身份报告`PRODUCTION_GATED` READY并绑定rollout/deployed/environment digest。缺任一required slot、组件无法报告、plane/lease/fence/digest错误、角色ACL越权或`TEST-NATS-ACL-001`/`TEST-NATS-STREAM-SESSION-001`失败时不得激活。
+- candidate stage根据signed bundle的`RequiredSlotSetV1(profileName,bundle,deploymentDescriptor)`确定性生成`deliveryProfile.requiredSlots[]`，不再维护手写组件列表；运行组件以自身全局唯一Principal/NKey调用`config.ready`，fixed base slot以descriptor绑定且全局唯一的`readyReporterPrincipal/probeNkeySelector`调用同一入口，receipt仍绑定稳定`(componentType,componentPrincipal,nodeId)`。production promote前复用同一stable slot set，在gated-passive生产维护域报告`PRODUCTION_GATED` READY并绑定rollout/deployed/environment digest。缺任一required slot、projection、probe authority、组件无法报告、plane/lease/fence/digest错误、角色ACL越权或`TEST-NATS-ACL-001`/`TEST-NATS-STREAM-SESSION-001`失败时不得激活。
 
 ---
 
@@ -1041,7 +1057,7 @@ Credential/Alias/Grant、Card publisher、delivery profile、Artifact policy、R
 |---|---|---|
 | C0 基线 | 进行中，门禁未通过 | `pyproject.toml/uv.lock` 已锁 A2A SDK 1.1.2、MCP 2.0.0、Redis 8.1.0；current/target 文档已建立；仍缺完整官方 fixture/CI/compatibility negative evidence |
 | C1 Canonical Core | 未开始 | — |
-| C2 Redis State | 未开始 | — |
+| C2 Redis State | 未开始 | 当前纯状态合同不计入Redis实现；仍缺Redis Function、真实持久化/重启及多实例门禁 |
 | C2.5 最小控制面 | 未开始 | Config/Artifact/Reconciliation/Audit/Recovery 垂直切片 |
 | C3 NATS v1 | 未开始 | 现有私有 NATS 仅作输入 |
 | C4 Long Task | 未开始 | 现有 stdout stream 为部分实现 |
@@ -1064,7 +1080,7 @@ Credential/Alias/Grant、Card publisher、delivery profile、Artifact policy、R
 - Redis/NATS/Object Store/Config/Audit/Peer/Gateway/Runtime/Reconciliation 及 dispatch/outbox/cancel 故障注入通过；
 - 长任务心跳、断线、取消、恢复通过；
 - CORE 必须通过 Tool/capability/admission/effect、signed config、Artifact 和 reconciliation 安全门禁；Push 属于 INTEROP，MCP/OAuth/Observer 属于 EXTENDED；
-- CORE 必须通过 TEST-IDENTITY-001、TEST-TENANT-001、TEST-OUTBOX-001、TEST-EFFECT-001、TEST-AUTHZ-001、TEST-ADMISSION-001、TEST-ARTIFACT-001、TEST-CONFIG-ATOMIC-001、TEST-RECON-RESOLVE-001、TEST-RECON-IMMUTABLE-001、TEST-AUDIT-SINK-001、TEST-DR-MANIFEST-001、TEST-DR-001；MCP/OAuth 测试仅在 EXTENDED 强制；
+- CORE 必须通过 TEST-IDENTITY-001、TEST-TENANT-001、TEST-OUTBOX-001、TEST-EFFECT-001、TEST-AUTHZ-001、TEST-ADMISSION-001、TEST-ARTIFACT-001、TEST-ARTIFACT-HOLD-EXPIRY-001、TEST-ARTIFACT-HOLD-REPLAY-001、TEST-NATS-ACL-001、TEST-CONFIG-ATOMIC-001、TEST-RECON-RESOLVE-001、TEST-RECON-IMMUTABLE-001、TEST-AUDIT-SINK-001、TEST-DR-MANIFEST-001、TEST-DR-001；MCP/OAuth 测试仅在 EXTENDED 强制；
 - CORE 至少 Linux + 1 NAT Peer 双向调用；INTEROP/EXTENDED 才要求 Linux + 2 Windows 任意方向；
 - 监控、WORM 审计、告警、Recovery Manifest/备份、Runbook 完整；
 - 无高危未决缺陷；

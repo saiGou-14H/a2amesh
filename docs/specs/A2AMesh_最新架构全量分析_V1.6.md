@@ -3,7 +3,7 @@
 > 文档ID：`A2AM-REVIEW-001`
 > 文档状态：G0 候选综合分析；非专项权威，不覆盖 11 份领域合同
 > 权威范围：仅综合解释当前设计集、G0 证据、实现差距和路线图；领域规则仍以 11 份专项为准
-> 评审状态：G0候选；结构与链接自检通过，本轮Config/Artifact纯状态合同及架构图同步后待新generation独立复审
+> 评审状态：G0候选；结构与链接自检通过，R11-C状态合同与R11-D架构资产局部门禁已通过，最终独立复审与发布门禁仍待完成
 > 分析日期：2026-08-14
 > 最后更新：2026-08-16
 > 分析范围：当前 8 份 V1.6、3 份 V1.2 专项、开发实施计划及仓库现状
@@ -81,7 +81,11 @@
 
 架构图显式区分**目标部署能力**与**当前可执行证据**：`RequiredSlotSetV1`和`ArtifactHoldExpiryCASState`已形成确定性纯状态合同；图中的Redis Function/Lua、真实NATS handler/AuthProof、持久化、多进程故障注入及生产一致性仍是目标能力，不得由纯合同测试推导为已实现。
 
-### 3.1 五层逻辑模型
+### 3.1 R11当前证据分层
+
+当前R11仍是未冻结dirty候选，先前tree指纹已经失效。已通过的局部门禁为：Artifact Hold纯合同`85 passed`（含State-side SCAN allocation proof、SCAN authority seal、REPLAY current-authority pointer及重绑拒绝）、架构资产allowlist `9 passed`、强制真实Chromium gate `1 passed`。这些结果分别属于纯合同和browser资产证据；它们不构成真实Redis restart durability、NATS TLS/NKey/AuthProof/ACL、Windows NAT、多进程恢复、Object Store、官方A2A黑盒或生产就绪证据。全量release门禁、最终tree冻结和二次独立复审完成前，整体结论仍为`private A2A-inspired NATS prototype`。
+
+### 3.2 五层逻辑模型
 
 #### 第一层：外部协议面
 

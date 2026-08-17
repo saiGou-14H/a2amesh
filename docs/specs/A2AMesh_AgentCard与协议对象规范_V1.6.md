@@ -514,7 +514,7 @@ VersionNotSupportedError
 11. 日志和协议对象不包含 NKey seed、Token、环境变量或思维链。
 12. v0.3 `message/send` fixture 不能被误当 v1 成功门禁。
 13. **TEST-CARD-OWNER-001**：双 instance、lease 过期和旧实例恢复时只有 active generation 的最新 fencing publisher 可更新 Card，presence 仍分别可见。
-14. **TEST-CARD-PROFILE-001**：以同一Agent依次构造CORE、INTEROP、EXTENDED candidate generation。CORE public Card只能声明JSON-RPC/SSE及已交付标准能力，gRPC interface、Push capability和任何MCP interface均absent；仅修改bundle声明而缺`TEST-GRPC-001`/Push门禁报告、required READY或有效GateEvidenceRecord时，Card publisher必须NACK且既有public bytes不变。INTEROP全部门禁PASS/0-skip并激活后，官方SDK解析的Card才可新增gRPC interface及实际Push capability；EXTENDED的MCP仍通过独立发现，任何generation都不得把MCP伪装为A2A interface。降级/回滚使用更高generation并重新门禁，旧Card缓存按generation/etag失效；声明集合与实际监听/官方黑盒逐项一致才PASS。
+- **TEST-CARD-PROFILE-001**：以同一Agent依次构造CORE、INTEROP、EXTENDED candidate generation。CORE public Card只能声明JSON-RPC/SSE及已交付标准能力，gRPC interface、Push capability和任何MCP interface均absent；仅修改bundle声明而缺`TEST-GRPC-001`/Push门禁报告、required READY或有效GateEvidenceRecord时，Card publisher必须NACK且既有public bytes不变。INTEROP全部门禁PASS/0-skip并激活后，官方SDK解析的Card才可新增gRPC interface及实际Push capability；EXTENDED的MCP仍通过独立发现，任何generation都不得把MCP伪装为A2A interface。降级/回滚使用更高generation并重新门禁，旧Card缓存按generation/etag失效；声明集合与实际监听/官方黑盒逐项一致才PASS。
 ---
 
 ## 14. G0 对象与发布冻结合同

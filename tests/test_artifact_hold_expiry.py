@@ -13,6 +13,7 @@ import rfc8785
 
 import a2amesh.state_contracts.artifact_hold as artifact_hold_contract
 from a2amesh.state_contracts.artifact_hold import (
+    ARTIFACT_HOLD_CANDIDATE_LEASE_MAX_MS,
     ArtifactHoldExpiryCandidate,
     ArtifactHoldExpiryCandidateLedgerEntry,
     ArtifactHoldExpiryCASState,
@@ -22,6 +23,8 @@ from a2amesh.state_contracts.artifact_hold import (
     ArtifactHoldExpiryEventSink,
     ArtifactHoldExpiryLedgerState,
     ArtifactHoldExpiryOperation,
+    ArtifactHoldExpiryReplayClaimRequest,
+    ArtifactHoldExpiryReplayClaimResult,
     ArtifactHoldExpiryRequest,
     ArtifactHoldExpiryResult,
     ArtifactHoldExpiryScanRequest,
@@ -30,12 +33,18 @@ from a2amesh.state_contracts.artifact_hold import (
     ArtifactHoldStatus,
     ArtifactLifecycleStatus,
     apply_artifact_hold_expiry,
+    apply_artifact_hold_expiry_replay_claim,
     apply_artifact_hold_expiry_scan,
     artifact_hold_expiry_preimage,
+    artifact_hold_expiry_replay_claim_operation_id,
 )
+
+# TEST-ARTIFACT-HOLD-REPLAY-001: REPLAY_CLAIM authority, evidence binding,
+# takeover fencing, strict wire fixture, and fail-closed snapshot coverage.
 
 ROOT = Path(__file__).parents[1]
 ARTIFACT_SPEC = ROOT / "docs" / "specs" / "A2AMesh_Artifact与对象存储设计_V1.2.md"
+REDIS_SPEC = ROOT / "docs" / "specs" / "A2AMesh_Redis状态平面与数据设计_V1.6.md"
 NATS_SPEC = ROOT / "docs" / "specs" / "A2AMesh_A2A协议与NATS集成适配设计_V1.6.md"
 CONFIG_SPEC = ROOT / "docs" / "specs" / "A2AMesh_受信配置与变更治理设计_V1.2.md"
 IMPLEMENTATION_PLAN = ROOT / "docs" / "specs" / "A2AMesh_开发实施计划.md"
@@ -46,6 +55,8 @@ TOKEN_A = "A" * 43
 TOKEN_B = "B" * 42 + "A"
 BASE64URL_C = "Q0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0M"
 BASE64URL_D = "REREREREREREREREREREREREREREREREREREREREREQ"
+BASE64URL_E = "RUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUU"
+BASE64URL_F = "RkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkY"
 OWNER_PRINCIPAL = "component:artifact-hold-reaper"
 OWNER_INSTANCE = "hold-reaper-01"
 
@@ -125,6 +136,34 @@ def make_state(
     )
 
 
+def record_scan(
+    ledger: ArtifactHoldExpiryLedgerState,
+    request: ArtifactHoldExpiryScanRequest,
+    result: ArtifactHoldExpiryScanResult,
+) -> ArtifactHoldExpiryLedgerState:
+    previous_fence = ledger.candidate_fence_high_water
+    allocations = []
+    for candidate in result.candidates:
+        allocation_previous = (
+            previous_fence
+            if candidate.candidate_fencing_token > previous_fence
+            else max(0, candidate.candidate_fencing_token - 1)
+        )
+        allocations.append(
+            artifact_hold_contract._issue_scan_allocation(
+                request=request,
+                candidate=candidate,
+                previous_fence_high_water=allocation_previous,
+            )
+        )
+        previous_fence = max(previous_fence, candidate.candidate_fencing_token)
+    return ledger._record_scan(
+        request,
+        result,
+        allocations=tuple(allocations),
+    )
+
+
 def make_cas_state(state: ArtifactHoldState) -> ArtifactHoldExpiryCASState:
     ledger = ArtifactHoldExpiryLedgerState.empty()
     if state.candidate is not None:
@@ -136,14 +175,14 @@ def make_cas_state(state: ArtifactHoldState) -> ArtifactHoldExpiryCASState:
             request=scan_request,
             candidates=(state.candidate,),
         )
-        ledger = ledger.record_scan(scan_request, scan_result)
+        ledger = record_scan(ledger, scan_request, scan_result)
     return ArtifactHoldExpiryCASState.create(
         hold_state=state,
         candidate_ledger=ledger,
     )
 
 
-def add_live_replay_authority(
+def forge_unclaimed_replay_authority(
     state: ArtifactHoldExpiryCASState,
     *,
     instance_id: str = "hold-reaper-02",
@@ -169,13 +208,67 @@ def add_live_replay_authority(
     )
     updated = replace(
         state,
-        candidate_ledger=state.candidate_ledger.record_scan(
+        candidate_ledger=record_scan(
+            state.candidate_ledger,
             scan_request,
             scan_result,
         ),
     )
     updated.validate()
     return updated, make_request(candidate=candidate)
+
+
+def make_replay_claim_request(
+    original_request: ArtifactHoldExpiryRequest,
+    *,
+    base_commit_digest: str,
+    candidate_lease_id: str = BASE64URL_C,
+    candidate_token: str = BASE64URL_D,
+) -> ArtifactHoldExpiryReplayClaimRequest:
+    return ArtifactHoldExpiryReplayClaimRequest.create(
+        replay_operation_id=artifact_hold_expiry_replay_claim_operation_id(
+            original_request.expire_operation_id,
+            candidate_lease_id,
+        ),
+        expire_operation_id=original_request.expire_operation_id,
+        base_commit_digest=base_commit_digest,
+        artifact_id=original_request.artifact_id,
+        hold_id=original_request.hold_id,
+        expected_hold_digest=original_request.expected_hold_digest,
+        expected_artifact_version=original_request.expected_artifact_version,
+        observed_expires_ms=original_request.observed_expires_ms,
+        candidate_lease_id=candidate_lease_id,
+        candidate_token=candidate_token,
+    )
+
+
+def claim_replay_authority(
+    state: ArtifactHoldExpiryCASState,
+    original_request: ArtifactHoldExpiryRequest,
+    *,
+    server_now_ms: int = 5000,
+    lease_until_ms: int = 5200,
+    instance_id: str = "hold-reaper-02",
+    candidate_lease_id: str = BASE64URL_C,
+    candidate_token: str = BASE64URL_D,
+) -> tuple[ArtifactHoldExpiryCASState, ArtifactHoldExpiryRequest]:
+    claim_request = make_replay_claim_request(
+        original_request,
+        base_commit_digest=state.commits[0].commit_digest,
+        candidate_lease_id=candidate_lease_id,
+        candidate_token=candidate_token,
+    )
+    claimed, claim_result = apply_artifact_hold_expiry_replay_claim(
+        claim_request,
+        state,
+        server_now_ms=server_now_ms,
+        lease_until_ms=lease_until_ms,
+        authenticated_reaper_principal_id=OWNER_PRINCIPAL,
+        authenticated_reaper_instance_id=instance_id,
+        authenticated_component_type="artifact-hold-reaper",
+        authenticated_subject="a2a.v1.state.artifact.hold.expire",
+    )
+    return claimed, ArtifactHoldExpiryRequest.create(candidate=claim_result.candidate)
 
 
 def apply_cas(
@@ -287,6 +380,32 @@ def replace_persisted_commit(
                 sink=ArtifactHoldExpiryEventSink.OUTBOX,
                 commit=changed_commit,
             ),
+        ),
+    )
+
+
+def replace_consumed_candidate(
+    state: ArtifactHoldExpiryCASState,
+    candidate: ArtifactHoldExpiryCandidate,
+) -> ArtifactHoldExpiryCASState:
+    scan_request = ArtifactHoldExpiryScanRequest.create(
+        scan_operation_id=candidate.scan_operation_id,
+        max_candidates=1,
+    )
+    scan_result = ArtifactHoldExpiryScanResult.create(
+        request=scan_request,
+        candidates=(candidate,),
+    )
+    consumed_entry = next(
+        entry for entry in state.candidate_ledger.candidate_entries if entry.consumed
+    )
+    return replace(
+        state,
+        candidate_ledger=replace(
+            state.candidate_ledger,
+            scan_requests=(scan_request,),
+            scan_results=(scan_result,),
+            candidate_entries=(replace(consumed_entry, candidate=candidate),),
         ),
     )
 
@@ -407,7 +526,8 @@ def test_candidate_authority_is_globally_unique_across_scan_ledger() -> None:
         request=first_request,
         candidates=(make_candidate(),),
     )
-    ledger = ArtifactHoldExpiryLedgerState.empty().record_scan(
+    ledger = record_scan(
+        ArtifactHoldExpiryLedgerState.empty(),
         first_request,
         first_result,
     )
@@ -448,8 +568,52 @@ def test_candidate_authority_is_globally_unique_across_scan_ledger() -> None:
             request=second_request,
             candidates=(candidate,),
         )
-        with pytest.raises(ArtifactHoldExpiryConflict, match="global candidate"):
-            ledger.record_scan(second_request, second_result)
+        with pytest.raises(
+            ArtifactHoldExpiryConflict,
+            match="global candidate|allocation proof",
+        ):
+            record_scan(ledger, second_request, second_result)
+
+
+def test_scan_ledger_rejects_candidate_without_state_allocation_proof() -> None:
+    request = ArtifactHoldExpiryScanRequest.create(
+        scan_operation_id="55" * 32,
+        max_candidates=1,
+    )
+    result = ArtifactHoldExpiryScanResult.create(
+        request=request,
+        candidates=(make_candidate(scan_operation_id=request.scan_operation_id),),
+    )
+    with pytest.raises(ArtifactHoldExpiryConflict, match="State-issued allocation"):
+        ArtifactHoldExpiryLedgerState.empty()._record_scan(request, result)
+    assert not hasattr(ArtifactHoldExpiryLedgerState, "record_scan")
+
+
+def test_scan_snapshot_rejects_missing_or_rebound_allocation_proof() -> None:
+    state = make_cas_state(make_state())
+    ledger = state.candidate_ledger
+    allocation = ledger.scan_allocations[0]
+    tampered_ledgers = (
+        replace(ledger, scan_allocations=()),
+        replace(
+            ledger,
+            scan_allocations=(replace(allocation, _seal=object()),),
+        ),
+        replace(
+            ledger,
+            scan_allocations=(
+                replace(
+                    allocation,
+                    previous_fence_high_water=(
+                        allocation.previous_fence_high_water + 1
+                    ),
+                ),
+            ),
+        ),
+    )
+    for tampered in tampered_ledgers:
+        with pytest.raises(ArtifactHoldExpiryConflict, match="allocation"):
+            tampered.validate()
 
 
 def test_scan_writer_binds_due_state_and_updates_current_projection() -> None:
@@ -457,28 +621,35 @@ def test_scan_writer_binds_due_state_and_updates_current_projection() -> None:
         scan_operation_id="33" * 32,
         max_candidates=1,
     )
-    candidate = make_candidate(scan_operation_id=request.scan_operation_id)
     initial = make_cas_state(make_state(candidate=None))
 
     updated, result = apply_artifact_hold_expiry_scan(
         request,
         initial,
         server_now_ms=1000,
-        candidates=(candidate,),
         authenticated_reaper_principal_id=OWNER_PRINCIPAL,
         authenticated_reaper_instance_id=OWNER_INSTANCE,
         authenticated_component_type="artifact-hold-reaper",
         authenticated_subject="a2a.v1.state.artifact.hold.expire",
     )
 
-    assert result.candidates == (candidate,)
+    candidate = result.candidates[0]
+    assert candidate.scan_operation_id == request.scan_operation_id
+    assert candidate.owner_principal_id == OWNER_PRINCIPAL
+    assert candidate.owner_instance_id == OWNER_INSTANCE
+    assert candidate.candidate_fencing_token == 1
+    assert candidate.issued_at_ms == 1000
+    assert candidate.lease_until_ms == 1000 + ARTIFACT_HOLD_CANDIDATE_LEASE_MAX_MS
+    assert candidate.artifact_id == "artifact-01"
+    assert candidate.hold_id == "hold-01"
+    assert candidate.expected_hold_digest == "aa" * 32
+    assert candidate.expected_artifact_version == 4
+    assert candidate.observed_expires_ms == 1000
     assert updated.hold_state.candidate == candidate
-    assert updated.candidate_ledger.candidate_entries[0].candidate == candidate
     replayed, replay_result = apply_artifact_hold_expiry_scan(
         request,
         updated,
         server_now_ms=1000,
-        candidates=(candidate,),
         authenticated_reaper_principal_id=OWNER_PRINCIPAL,
         authenticated_reaper_instance_id=OWNER_INSTANCE,
         authenticated_component_type="artifact-hold-reaper",
@@ -486,6 +657,62 @@ def test_scan_writer_binds_due_state_and_updates_current_projection() -> None:
     )
     assert replayed == updated
     assert replay_result == result
+
+    with pytest.raises(ArtifactHoldExpiryConflict, match="principal"):
+        apply_artifact_hold_expiry_scan(
+            request,
+            updated,
+            server_now_ms=1000,
+            authenticated_reaper_principal_id="component:other",
+            authenticated_reaper_instance_id=OWNER_INSTANCE,
+            authenticated_component_type="artifact-hold-reaper",
+            authenticated_subject="a2a.v1.state.artifact.hold.expire",
+        )
+
+
+def test_scan_state_allocator_advances_exactly_from_persisted_high_water() -> None:
+    existing = make_candidate(candidate_fencing_token=7)
+    initial = make_cas_state(make_state(candidate=existing))
+    request = ArtifactHoldExpiryScanRequest.create(
+        scan_operation_id="66" * 32,
+        max_candidates=1,
+    )
+
+    updated, result = apply_artifact_hold_expiry_scan(
+        request,
+        initial,
+        server_now_ms=1000,
+        authenticated_reaper_principal_id=OWNER_PRINCIPAL,
+        authenticated_reaper_instance_id=OWNER_INSTANCE,
+        authenticated_component_type="artifact-hold-reaper",
+        authenticated_subject="a2a.v1.state.artifact.hold.expire",
+    )
+
+    candidate = result.candidates[0]
+    allocation = updated.candidate_ledger.scan_allocations[-1]
+    assert candidate.candidate_fencing_token == 8
+    assert allocation.previous_fence_high_water == 7
+    assert allocation.candidate == candidate
+    assert updated.candidate_ledger.candidate_fence_high_water == 8
+
+
+def test_scan_writer_does_not_accept_caller_candidate_authority() -> None:
+    request = ArtifactHoldExpiryScanRequest.create(
+        scan_operation_id="44" * 32,
+        max_candidates=1,
+    )
+    state = make_cas_state(make_state(candidate=None))
+    with pytest.raises(TypeError, match="candidates"):
+        apply_artifact_hold_expiry_scan(
+            request,
+            state,
+            server_now_ms=1000,
+            candidates=(make_candidate(scan_operation_id=request.scan_operation_id),),
+            authenticated_reaper_principal_id=OWNER_PRINCIPAL,
+            authenticated_reaper_instance_id=OWNER_INSTANCE,
+            authenticated_component_type="artifact-hold-reaper",
+            authenticated_subject="a2a.v1.state.artifact.hold.expire",
+        )
 
 
 @pytest.mark.parametrize(
@@ -497,7 +724,6 @@ def test_scan_writer_rejects_unauthorized_or_non_due_candidates(case: str) -> No
         scan_operation_id="77" * 32,
         max_candidates=1,
     )
-    candidate = make_candidate(scan_operation_id=request.scan_operation_id)
     state = make_cas_state(make_state(candidate=None))
     now = 1000
     principal = OWNER_PRINCIPAL
@@ -526,7 +752,6 @@ def test_scan_writer_rejects_unauthorized_or_non_due_candidates(case: str) -> No
             request,
             state,
             server_now_ms=now,
-            candidates=(candidate,),
             authenticated_reaper_principal_id=principal,
             authenticated_reaper_instance_id=instance,
             authenticated_component_type="artifact-hold-reaper",
@@ -543,7 +768,8 @@ def test_scan_ledger_accepts_monotonic_authority_and_exact_replay() -> None:
         request=first_request,
         candidates=(make_candidate(),),
     )
-    ledger = ArtifactHoldExpiryLedgerState.empty().record_scan(
+    ledger = record_scan(
+        ArtifactHoldExpiryLedgerState.empty(),
         first_request,
         first_result,
     )
@@ -563,7 +789,7 @@ def test_scan_ledger_accepts_monotonic_authority_and_exact_replay() -> None:
         candidates=(second_candidate,),
     )
 
-    updated = ledger.record_scan(second_request, second_result)
+    updated = record_scan(ledger, second_request, second_result)
 
     assert updated.candidate_fence_high_water == 8
     assert len(updated.scan_results) == 2
@@ -572,7 +798,7 @@ def test_scan_ledger_accepts_monotonic_authority_and_exact_replay() -> None:
         isinstance(entry, ArtifactHoldExpiryCandidateLedgerEntry)
         for entry in updated.candidate_entries
     )
-    assert updated.record_scan(second_request, second_result) == updated
+    assert record_scan(updated, second_request, second_result) == updated
 
     reordered = replace(
         updated,
@@ -809,7 +1035,8 @@ def test_active_hold_requires_latest_candidate_ledger_projection() -> None:
         request=next_scan,
         candidates=(latest_candidate,),
     )
-    latest_ledger = snapshot.candidate_ledger.record_scan(
+    latest_ledger = record_scan(
+        snapshot.candidate_ledger,
         next_scan,
         latest_result,
     )
@@ -874,6 +1101,45 @@ def test_cas_snapshot_binds_commit_fence_to_consumed_candidate() -> None:
 
     with pytest.raises(ArtifactHoldExpiryConflict, match="commit fence"):
         forged.validate()
+
+
+@pytest.mark.parametrize(
+    "candidate_changes",
+    (
+        {"owner_instance_id": "hold-reaper-rebound"},
+        {"candidate_lease_id": BASE64URL_C},
+        {"candidate_token": BASE64URL_D},
+        {"scan_operation_id": "44" * 32},
+        {"issued_at_ms": 900},
+        {"lease_until_ms": 1300},
+    ),
+)
+def test_commit_binds_complete_consumed_candidate(
+    candidate_changes: dict[str, object],
+) -> None:
+    request = make_request()
+    committed, _ = apply_cas(request, make_cas_state(make_state()))
+    rebound_candidate = make_candidate(**candidate_changes)  # type: ignore[arg-type]
+    rebound = replace_consumed_candidate(committed, rebound_candidate)
+
+    assert rebound.commits[0].commit_digest == committed.commits[0].commit_digest
+    with pytest.raises(ArtifactHoldExpiryConflict, match="candidate digest|scan authority"):
+        rebound.validate()
+
+
+def test_public_replay_rejects_consumed_candidate_rebinding() -> None:
+    request = make_request()
+    committed, _ = apply_cas(request, make_cas_state(make_state()))
+    rebound_candidate = make_candidate(owner_instance_id="hold-reaper-rebound")
+    rebound = replace_consumed_candidate(committed, rebound_candidate)
+
+    with pytest.raises(ArtifactHoldExpiryConflict, match="candidate digest|scan authority"):
+        apply_cas(
+            make_request(candidate=rebound_candidate),
+            rebound,
+            server_now_ms=5000,
+            authenticated_instance="hold-reaper-rebound",
+        )
 
 
 @pytest.mark.parametrize(
@@ -1002,7 +1268,7 @@ def test_consumed_candidate_authority_cannot_be_reissued() -> None:
     )
 
     with pytest.raises(ArtifactHoldExpiryConflict, match="global candidate"):
-        committed.candidate_ledger.record_scan(next_request, next_result)
+        record_scan(committed.candidate_ledger, next_request, next_result)
 
 
 def test_cas_snapshot_rejects_tampered_event_evidence() -> None:
@@ -1167,6 +1433,31 @@ def test_commit_validation_requires_authenticated_replay_context() -> None:
         commit._validate_result_for_request(request)  # type: ignore[call-arg]
 
 
+def test_low_level_higher_fence_rejects_unverified_candidate() -> None:
+    request = make_request()
+    committed, _ = apply_first_write(request, make_state())
+    commit = require_commit(committed, request)
+    forged_candidate = make_candidate(
+        scan_operation_id="22" * 32,
+        candidate_lease_id=BASE64URL_C,
+        candidate_fencing_token=8,
+        candidate_token=BASE64URL_D,
+        owner_instance_id="hold-reaper-02",
+        issued_at_ms=4900,
+        lease_until_ms=5200,
+    )
+
+    with pytest.raises(ArtifactHoldExpiryConflict, match="ledger-verified"):
+        commit._validate_result_for_request(
+            ArtifactHoldExpiryRequest.create(candidate=forged_candidate),
+            authenticated_reaper_principal_id=OWNER_PRINCIPAL,
+            authenticated_reaper_fencing_token=8,
+            authenticated_component_type="artifact-hold-reaper",
+            authenticated_subject="a2a.v1.state.artifact.hold.expire",
+            verified_replay_authority=forged_candidate,  # type: ignore[arg-type]
+        )
+
+
 @pytest.mark.parametrize(
     ("overrides", "message"),
     (
@@ -1187,7 +1478,7 @@ def test_commit_validation_rejects_wrong_authenticated_context(
         validate_commit(commit, request, **overrides)  # type: ignore[arg-type]
 
 
-def test_replay_same_fence_requires_owner_but_higher_fence_can_take_over() -> None:
+def test_replay_same_fence_requires_owner_and_higher_fence_requires_claim() -> None:
     request = make_request()
     committed, expected = apply_cas(request, make_cas_state(make_state()))
 
@@ -1199,14 +1490,28 @@ def test_replay_same_fence_requires_owner_but_higher_fence_can_take_over() -> No
             authenticated_fencing_token=7,
         )
 
-    replayed, result = apply_cas(
-        request,
+    with pytest.raises(ArtifactHoldExpiryConflict, match="candidate"):
+        apply_cas(
+            request,
+            committed,
+            server_now_ms=5000,
+            authenticated_instance="hold-reaper-02",
+            authenticated_fencing_token=8,
+        )
+
+    claimed, replay_request = claim_replay_authority(
         committed,
+        request,
+    )
+    replayed, result = apply_cas(
+        replay_request,
+        claimed,
         server_now_ms=5000,
         authenticated_instance="hold-reaper-02",
         authenticated_fencing_token=8,
     )
-    assert replayed == committed
+    assert replay_request.candidate_fencing_token == 8
+    assert replayed == claimed
     assert result == expected
 
     with pytest.raises(ArtifactHoldExpiryConflict, match="fence"):
@@ -1218,12 +1523,630 @@ def test_replay_same_fence_requires_owner_but_higher_fence_can_take_over() -> No
         )
 
 
+def test_commit_validator_rejects_bare_higher_fence_without_candidate() -> None:
+    request = make_request()
+    committed, _ = apply_cas(request, make_cas_state(make_state()))
+    commit = require_commit(committed, request)
+
+    with pytest.raises(ArtifactHoldExpiryConflict, match="ledger-verified authority"):
+        validate_commit(
+            commit,
+            request,
+            authenticated_fencing_token=8,
+        )
+
+
+def test_replay_claim_wire_is_strict_and_exactly_idempotent() -> None:
+    request = make_request()
+    committed, _ = apply_cas(request, make_cas_state(make_state()))
+    claim_request = make_replay_claim_request(
+        request,
+        base_commit_digest=committed.commits[0].commit_digest,
+    )
+
+    parsed_request = ArtifactHoldExpiryReplayClaimRequest.from_canonical_json(
+        claim_request.canonical_json()
+    )
+    assert parsed_request == claim_request
+
+    claimed, first = apply_artifact_hold_expiry_replay_claim(
+        claim_request,
+        committed,
+        server_now_ms=5000,
+        lease_until_ms=5200,
+        authenticated_reaper_principal_id=OWNER_PRINCIPAL,
+        authenticated_reaper_instance_id="hold-reaper-02",
+        authenticated_component_type="artifact-hold-reaper",
+        authenticated_subject="a2a.v1.state.artifact.hold.expire",
+    )
+    parsed_result = artifact_hold_contract.ArtifactHoldExpiryReplayClaimResult.from_canonical_json(
+        first.canonical_json()
+    )
+    parsed_result.validate_for(claim_request)
+    assert parsed_result == first
+
+    replayed_state, replayed_result = apply_artifact_hold_expiry_replay_claim(
+        claim_request,
+        claimed,
+        server_now_ms=5100,
+        lease_until_ms=5300,
+        authenticated_reaper_principal_id=OWNER_PRINCIPAL,
+        authenticated_reaper_instance_id="hold-reaper-02",
+        authenticated_component_type="artifact-hold-reaper",
+        authenticated_subject="a2a.v1.state.artifact.hold.expire",
+    )
+    assert replayed_state == claimed
+    assert replayed_result == first
+    assert claimed.candidate_ledger.candidate_entry_for(
+        first.candidate.candidate_lease_id
+    ).consumed is False
+
+    with pytest.raises(ArtifactHoldExpiryConflict):
+        ArtifactHoldExpiryReplayClaimRequest.from_canonical_json(
+            rfc8785.dumps(claim_request.to_wire_dict() | {"extra": 0})
+        )
+
+
+def test_replay_claim_binds_base_commit_digest() -> None:
+    request = make_request()
+    committed, _ = apply_cas(request, make_cas_state(make_state()))
+    claim_request = make_replay_claim_request(
+        request,
+        base_commit_digest=committed.commits[0].commit_digest,
+    )
+    forged_request = replace(
+        claim_request,
+        base_commit_digest="33" * 32,
+        request_digest="",
+    )
+    forged_request = replace(
+        forged_request,
+        request_digest=artifact_hold_contract._replay_claim_request_digest(
+            forged_request
+        ),
+    )
+    with pytest.raises(ArtifactHoldExpiryConflict, match="base commit digest"):
+        apply_artifact_hold_expiry_replay_claim(
+            forged_request,
+            committed,
+            server_now_ms=5000,
+            lease_until_ms=5200,
+            authenticated_reaper_principal_id=OWNER_PRINCIPAL,
+            authenticated_reaper_instance_id="hold-reaper-02",
+            authenticated_component_type="artifact-hold-reaper",
+            authenticated_subject="a2a.v1.state.artifact.hold.expire",
+        )
+
+    claimed, claim_result = apply_artifact_hold_expiry_replay_claim(
+        claim_request,
+        committed,
+        server_now_ms=5000,
+        lease_until_ms=5200,
+        authenticated_reaper_principal_id=OWNER_PRINCIPAL,
+        authenticated_reaper_instance_id="hold-reaper-02",
+        authenticated_component_type="artifact-hold-reaper",
+        authenticated_subject="a2a.v1.state.artifact.hold.expire",
+    )
+    forged_result = replace(
+        claim_result,
+        base_commit_digest="33" * 32,
+        result_digest="",
+    )
+    forged_result = replace(
+        forged_result,
+        result_digest=artifact_hold_contract._replay_claim_result_digest(
+            forged_result
+        ),
+    )
+    with pytest.raises(ArtifactHoldExpiryConflict, match="originating claim request"):
+        replace(
+            claimed,
+            candidate_ledger=replace(
+                claimed.candidate_ledger,
+                replay_claim_results=(forged_result,),
+            ),
+        ).validate()
+
+
+def test_replay_candidate_must_be_persisted_live_and_exactly_owned() -> None:
+    request = make_request()
+    committed, _ = apply_cas(request, make_cas_state(make_state()))
+    forged_candidate = make_candidate(
+        scan_operation_id="22" * 32,
+        candidate_lease_id=BASE64URL_C,
+        candidate_fencing_token=8,
+        candidate_token=BASE64URL_D,
+        owner_instance_id="hold-reaper-02",
+        issued_at_ms=4900,
+        lease_until_ms=5200,
+    )
+    forged_request = ArtifactHoldExpiryRequest.create(candidate=forged_candidate)
+    with pytest.raises(ArtifactHoldExpiryConflict, match="candidate"):
+        apply_cas(
+            forged_request,
+            committed,
+            server_now_ms=5000,
+            authenticated_instance="hold-reaper-02",
+            authenticated_fencing_token=8,
+        )
+
+    claimed, replay_request = claim_replay_authority(
+        committed,
+        request,
+        lease_until_ms=5050,
+    )
+    with pytest.raises(ArtifactHoldExpiryConflict, match="lease"):
+        apply_cas(
+            replay_request,
+            claimed,
+            server_now_ms=5050,
+            authenticated_instance="hold-reaper-02",
+            authenticated_fencing_token=8,
+        )
+    for instance, fence in (("wrong-instance", 8), ("hold-reaper-02", 9)):
+        with pytest.raises(ArtifactHoldExpiryConflict, match="persisted candidate"):
+            apply_cas(
+                replay_request,
+                claimed,
+                server_now_ms=5000,
+                authenticated_instance=instance,
+                authenticated_fencing_token=fence,
+            )
+
+
+def test_replay_claim_lease_duration_is_bounded() -> None:
+    request = make_request()
+    committed, _ = apply_cas(request, make_cas_state(make_state()))
+
+    with pytest.raises(ArtifactHoldExpiryConflict, match="maximum candidate lease"):
+        claim_replay_authority(
+            committed,
+            request,
+            server_now_ms=5000,
+            lease_until_ms=5000 + ARTIFACT_HOLD_CANDIDATE_LEASE_MAX_MS + 1,
+        )
+
+    claimed, _ = claim_replay_authority(
+        committed,
+        request,
+        server_now_ms=5000,
+        lease_until_ms=5000 + ARTIFACT_HOLD_CANDIDATE_LEASE_MAX_MS,
+    )
+    candidate = claimed.candidate_ledger.replay_claim_results[-1].candidate
+    assert candidate.lease_until_ms - candidate.issued_at_ms == (
+        ARTIFACT_HOLD_CANDIDATE_LEASE_MAX_MS
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("owner_instance_id", "hold-reaper-rebound"),
+        ("lease_until_ms", 5500),
+    ),
+)
+def test_replay_candidate_authority_rebinding_is_rejected(
+    field: str,
+    value: object,
+) -> None:
+    request = make_request()
+    committed, _ = apply_cas(request, make_cas_state(make_state()))
+    claimed, _ = claim_replay_authority(
+        committed,
+        request,
+        server_now_ms=5000,
+        lease_until_ms=5200,
+        instance_id="hold-reaper-02",
+    )
+    ledger = claimed.candidate_ledger
+    stored_result = ledger.replay_claim_results[-1]
+    stored_candidate = stored_result.candidate
+    candidate_without_digest = replace(stored_candidate, **{field: value})
+    rebound_candidate = replace(
+        candidate_without_digest,
+        candidate_digest=artifact_hold_contract._canonical_digest(
+            artifact_hold_contract._candidate_payload(candidate_without_digest)
+        ),
+    )
+    result_without_digest = replace(stored_result, candidate=rebound_candidate)
+    rebound_result = replace(
+        result_without_digest,
+        result_digest=artifact_hold_contract._replay_claim_result_digest(
+            result_without_digest
+        ),
+    )
+    entries = list(ledger.candidate_entries)
+    entry_index = next(
+        index
+        for index, entry in enumerate(entries)
+        if entry.candidate == stored_candidate
+    )
+    entries[entry_index] = replace(entries[entry_index], candidate=rebound_candidate)
+    rebound_ledger = replace(
+        ledger,
+        replay_claim_results=ledger.replay_claim_results[:-1] + (rebound_result,),
+        candidate_entries=tuple(entries),
+    )
+    rebound_state = replace(claimed, candidate_ledger=rebound_ledger)
+
+    with pytest.raises(ArtifactHoldExpiryConflict, match="replay current authority"):
+        rebound_state.validate()
+
+    replay_request = ArtifactHoldExpiryRequest.create(candidate=rebound_candidate)
+    with pytest.raises(ArtifactHoldExpiryConflict, match="replay current authority"):
+        apply_artifact_hold_expiry(
+            replay_request,
+            rebound_state,
+            server_now_ms=5050,
+            authenticated_reaper_principal_id=OWNER_PRINCIPAL,
+            authenticated_reaper_instance_id=rebound_candidate.owner_instance_id,
+            authenticated_reaper_fencing_token=8,
+            authenticated_component_type="artifact-hold-reaper",
+            authenticated_subject="a2a.v1.state.artifact.hold.expire",
+        )
+
+
+def test_scan_candidate_authority_rebinding_is_rejected() -> None:
+    committed = make_cas_state(make_state())
+    ledger = committed.candidate_ledger
+    scan_result = ledger.scan_results[-1]
+    stored_candidate = scan_result.candidates[0]
+    candidate_without_digest = replace(
+        stored_candidate,
+        owner_instance_id="hold-reaper-rebound",
+    )
+    rebound_candidate = replace(
+        candidate_without_digest,
+        candidate_digest=artifact_hold_contract._canonical_digest(
+            artifact_hold_contract._candidate_payload(candidate_without_digest)
+        ),
+    )
+    rebound_scan_without_digest = replace(
+        scan_result,
+        candidates=(rebound_candidate,),
+    )
+    rebound_scan_result = replace(
+        rebound_scan_without_digest,
+        result_digest=artifact_hold_contract._scan_result_digest(
+            rebound_scan_without_digest
+        ),
+    )
+    entries = tuple(
+        replace(entry, candidate=rebound_candidate)
+        if entry.candidate == stored_candidate
+        else entry
+        for entry in ledger.candidate_entries
+    )
+    rebound_ledger = replace(
+        ledger,
+        scan_results=(rebound_scan_result,),
+        candidate_entries=entries,
+    )
+    rebound_state = replace(
+        committed,
+        hold_state=replace(committed.hold_state, candidate=rebound_candidate),
+        candidate_ledger=rebound_ledger,
+    )
+
+    with pytest.raises(ArtifactHoldExpiryConflict, match="scan authority"):
+        rebound_state.validate()
+
+    rebound_request = ArtifactHoldExpiryRequest.create(candidate=rebound_candidate)
+    with pytest.raises(ArtifactHoldExpiryConflict, match="scan authority"):
+        apply_artifact_hold_expiry(
+            rebound_request,
+            rebound_state,
+            server_now_ms=1000,
+            authenticated_reaper_principal_id=OWNER_PRINCIPAL,
+            authenticated_reaper_instance_id="hold-reaper-rebound",
+            authenticated_reaper_fencing_token=7,
+            authenticated_component_type="artifact-hold-reaper",
+            authenticated_subject="a2a.v1.state.artifact.hold.expire",
+        )
+
+
+def test_live_replay_claim_blocks_new_claim_id_without_advancing_fence() -> None:
+    request = make_request()
+    committed, _ = apply_cas(request, make_cas_state(make_state()))
+    first_state, _ = claim_replay_authority(
+        committed,
+        request,
+        lease_until_ms=5200,
+    )
+
+    with pytest.raises(ArtifactHoldExpiryConflict, match="current replay authority"):
+        claim_replay_authority(
+            first_state,
+            request,
+            server_now_ms=5100,
+            lease_until_ms=5300,
+            instance_id="hold-reaper-03",
+            candidate_lease_id=BASE64URL_E,
+            candidate_token=BASE64URL_F,
+        )
+
+    assert first_state.candidate_ledger.candidate_fence_high_water == 8
+    assert len(first_state.candidate_ledger.replay_claim_results) == 1
+
+
+def test_newer_replay_claim_supersedes_all_lower_authorities() -> None:
+    request = make_request()
+    committed, expected = apply_cas(request, make_cas_state(make_state()))
+    first_state, first_replay = claim_replay_authority(
+        committed,
+        request,
+        lease_until_ms=5050,
+    )
+    second_state, second_replay = claim_replay_authority(
+        first_state,
+        request,
+        server_now_ms=5050,
+        lease_until_ms=5250,
+        instance_id="hold-reaper-03",
+        candidate_lease_id=BASE64URL_E,
+        candidate_token=BASE64URL_F,
+    )
+
+    with pytest.raises(ArtifactHoldExpiryConflict, match="superseded"):
+        apply_cas(
+            first_replay,
+            second_state,
+            server_now_ms=5100,
+            authenticated_instance="hold-reaper-02",
+            authenticated_fencing_token=8,
+        )
+    with pytest.raises(ArtifactHoldExpiryConflict, match="superseded"):
+        apply_cas(
+            request,
+            second_state,
+            server_now_ms=5100,
+            authenticated_fencing_token=7,
+        )
+
+    replayed, result = apply_cas(
+        second_replay,
+        second_state,
+        server_now_ms=5100,
+        authenticated_instance="hold-reaper-03",
+        authenticated_fencing_token=9,
+    )
+    assert replayed == second_state
+    assert result == expected
+
+
+def test_expired_replay_claim_requires_new_id_and_advances_fence() -> None:
+    request = make_request()
+    committed, expected = apply_cas(request, make_cas_state(make_state()))
+    first_claim = make_replay_claim_request(
+        request,
+        base_commit_digest=committed.commits[0].commit_digest,
+    )
+    first_state, first_result = apply_artifact_hold_expiry_replay_claim(
+        first_claim,
+        committed,
+        server_now_ms=5000,
+        lease_until_ms=5050,
+        authenticated_reaper_principal_id=OWNER_PRINCIPAL,
+        authenticated_reaper_instance_id="hold-reaper-02",
+        authenticated_component_type="artifact-hold-reaper",
+        authenticated_subject="a2a.v1.state.artifact.hold.expire",
+    )
+
+    conflicting_request = make_replay_claim_request(
+        request,
+        base_commit_digest=committed.commits[0].commit_digest,
+        candidate_token=BASE64URL_F,
+    )
+    with pytest.raises(ArtifactHoldExpiryConflict, match="different request"):
+        apply_artifact_hold_expiry_replay_claim(
+            conflicting_request,
+            first_state,
+            server_now_ms=5010,
+            lease_until_ms=5200,
+            authenticated_reaper_principal_id=OWNER_PRINCIPAL,
+            authenticated_reaper_instance_id="hold-reaper-02",
+            authenticated_component_type="artifact-hold-reaper",
+            authenticated_subject="a2a.v1.state.artifact.hold.expire",
+        )
+
+    second_claim = make_replay_claim_request(
+        request,
+        base_commit_digest=committed.commits[0].commit_digest,
+        candidate_lease_id=BASE64URL_E,
+        candidate_token=BASE64URL_F,
+    )
+    second_state, second_result = apply_artifact_hold_expiry_replay_claim(
+        second_claim,
+        first_state,
+        server_now_ms=5050,
+        lease_until_ms=5250,
+        authenticated_reaper_principal_id=OWNER_PRINCIPAL,
+        authenticated_reaper_instance_id="hold-reaper-03",
+        authenticated_component_type="artifact-hold-reaper",
+        authenticated_subject="a2a.v1.state.artifact.hold.expire",
+    )
+    assert first_result.candidate.candidate_fencing_token == 8
+    assert second_result.candidate.candidate_fencing_token == 9
+    assert first_claim.replay_operation_id != second_claim.replay_operation_id
+    assert second_state.candidate_ledger.candidate_fence_high_water == 9
+
+    with pytest.raises(ArtifactHoldExpiryConflict, match="superseded"):
+        apply_cas(
+            ArtifactHoldExpiryRequest.create(candidate=first_result.candidate),
+            second_state,
+            server_now_ms=5050,
+            authenticated_instance="hold-reaper-02",
+            authenticated_fencing_token=8,
+        )
+    replayed, replay_result = apply_cas(
+        ArtifactHoldExpiryRequest.create(candidate=second_result.candidate),
+        second_state,
+        server_now_ms=5100,
+        authenticated_instance="hold-reaper-03",
+        authenticated_fencing_token=9,
+    )
+    assert replayed == second_state
+    assert replay_result == expected
+
+
+def test_replay_claim_idempotency_returns_exact_expired_evidence() -> None:
+    request = make_request()
+    committed, _ = apply_cas(request, make_cas_state(make_state()))
+    claim_request = make_replay_claim_request(
+        request,
+        base_commit_digest=committed.commits[0].commit_digest,
+    )
+    claimed, first_result = apply_artifact_hold_expiry_replay_claim(
+        claim_request,
+        committed,
+        server_now_ms=5000,
+        lease_until_ms=5050,
+        authenticated_reaper_principal_id=OWNER_PRINCIPAL,
+        authenticated_reaper_instance_id="hold-reaper-02",
+        authenticated_component_type="artifact-hold-reaper",
+        authenticated_subject="a2a.v1.state.artifact.hold.expire",
+    )
+
+    replayed, replay_result = apply_artifact_hold_expiry_replay_claim(
+        claim_request,
+        claimed,
+        server_now_ms=5060,
+        lease_until_ms=0,
+        authenticated_reaper_principal_id=OWNER_PRINCIPAL,
+        authenticated_reaper_instance_id="hold-reaper-02",
+        authenticated_component_type="artifact-hold-reaper",
+        authenticated_subject="a2a.v1.state.artifact.hold.expire",
+    )
+    assert replayed == claimed
+    assert replay_result == first_result
+
+
+def test_replay_claim_snapshot_tampering_fails_closed() -> None:
+    request = make_request()
+    committed, _ = apply_cas(request, make_cas_state(make_state()))
+    claim_request = make_replay_claim_request(
+        request,
+        base_commit_digest=committed.commits[0].commit_digest,
+    )
+    claimed, claim_result = apply_artifact_hold_expiry_replay_claim(
+        claim_request,
+        committed,
+        server_now_ms=5000,
+        lease_until_ms=5200,
+        authenticated_reaper_principal_id=OWNER_PRINCIPAL,
+        authenticated_reaper_instance_id="hold-reaper-02",
+        authenticated_component_type="artifact-hold-reaper",
+        authenticated_subject="a2a.v1.state.artifact.hold.expire",
+    )
+
+    without_commit = replace(
+        claimed,
+        commits=(),
+        audit_records=(),
+        outbox_records=(),
+    )
+    with pytest.raises(ArtifactHoldExpiryConflict, match="no committed"):
+        without_commit.validate()
+
+    consumed_entries = tuple(
+        replace(
+            entry,
+            consumed_by_expire_operation_id="33" * 32,
+            consumed_at_ms=5001,
+        )
+        if entry.candidate == claim_result.candidate
+        else entry
+        for entry in claimed.candidate_ledger.candidate_entries
+    )
+    with pytest.raises(ArtifactHoldExpiryConflict, match="tombstones"):
+        replace(
+            claimed,
+            candidate_ledger=replace(
+                claimed.candidate_ledger,
+                candidate_entries=consumed_entries,
+            ),
+        ).validate()
+
+    candidate = claim_result.candidate
+    wrong_owner_candidate = ArtifactHoldExpiryCandidate.create(
+        scan_operation_id=candidate.scan_operation_id,
+        candidate_lease_id=candidate.candidate_lease_id,
+        candidate_fencing_token=candidate.candidate_fencing_token,
+        candidate_token=candidate.candidate_token,
+        owner_principal_id="component:other",
+        owner_instance_id=candidate.owner_instance_id,
+        issued_at_ms=candidate.issued_at_ms,
+        lease_until_ms=candidate.lease_until_ms,
+        artifact_id=candidate.artifact_id,
+        hold_id=candidate.hold_id,
+        expected_hold_digest=candidate.expected_hold_digest,
+        expected_artifact_version=candidate.expected_artifact_version,
+        observed_expires_ms=candidate.observed_expires_ms,
+    )
+    wrong_owner_result = ArtifactHoldExpiryReplayClaimResult.create(
+        request=claim_request,
+        candidate=wrong_owner_candidate,
+    )
+    wrong_owner_entries = tuple(
+        replace(entry, candidate=wrong_owner_candidate)
+        if entry.candidate == candidate
+        else entry
+        for entry in claimed.candidate_ledger.candidate_entries
+    )
+    with pytest.raises(
+        ArtifactHoldExpiryConflict,
+        match="replay current authority|committed expiry",
+    ):
+        replace(
+            claimed,
+            candidate_ledger=replace(
+                claimed.candidate_ledger,
+                replay_claim_results=(wrong_owner_result,),
+                candidate_entries=wrong_owner_entries,
+            ),
+        ).validate()
+
+
+def test_replay_claim_rejects_wrong_commit_tuple_and_actor() -> None:
+    request = make_request()
+    committed, _ = apply_cas(request, make_cas_state(make_state()))
+    claim_request = make_replay_claim_request(
+        request,
+        base_commit_digest=committed.commits[0].commit_digest,
+    )
+
+    with pytest.raises(ArtifactHoldExpiryConflict, match="due tuple"):
+        ArtifactHoldExpiryReplayClaimRequest.create(
+            replay_operation_id=claim_request.replay_operation_id,
+            expire_operation_id=claim_request.expire_operation_id,
+            base_commit_digest=claim_request.base_commit_digest,
+            artifact_id="artifact-other",
+            hold_id=claim_request.hold_id,
+            expected_hold_digest=claim_request.expected_hold_digest,
+            expected_artifact_version=claim_request.expected_artifact_version,
+            observed_expires_ms=claim_request.observed_expires_ms,
+            candidate_lease_id=claim_request.candidate_lease_id,
+            candidate_token=claim_request.candidate_token,
+        )
+    with pytest.raises(ArtifactHoldExpiryConflict, match="principal"):
+        apply_artifact_hold_expiry_replay_claim(
+            claim_request,
+            committed,
+            server_now_ms=5000,
+            lease_until_ms=5200,
+            authenticated_reaper_principal_id="component:other",
+            authenticated_reaper_instance_id="hold-reaper-02",
+            authenticated_component_type="artifact-hold-reaper",
+            authenticated_subject="a2a.v1.state.artifact.hold.expire",
+        )
+
+
 def test_terminal_snapshot_rejects_newer_unconsumed_candidate_authority() -> None:
     request = make_request()
     committed, _ = apply_cas(request, make_cas_state(make_state()))
 
     with pytest.raises(ArtifactHoldExpiryConflict, match="terminal.*candidate"):
-        add_live_replay_authority(committed)
+        forge_unclaimed_replay_authority(committed)
 
 
 def test_replay_rejects_active_current_state_even_after_version_advance() -> None:
@@ -1261,14 +2184,15 @@ def test_replay_uses_immutable_commit_not_mutable_current_state() -> None:
     assert replayed == later
     assert replay_result == first_result
 
+    claimed, replay_request = claim_replay_authority(later, request)
     replayed_takeover, takeover_replay = apply_cas(
-        request,
-        later,
+        replay_request,
+        claimed,
         server_now_ms=5000,
         authenticated_instance="hold-reaper-02",
         authenticated_fencing_token=8,
     )
-    assert replayed_takeover == later
+    assert replayed_takeover == claimed
     assert takeover_replay == first_result
     with pytest.raises(ArtifactHoldExpiryConflict, match="fence"):
         apply_cas(
@@ -1462,6 +2386,20 @@ def test_artifact_hold_exact_wire_fixture_reproduces_every_byte() -> None:
     state = make_state(candidate=candidate)
     committed, result = apply_first_write(request, state)
     commit = require_commit(committed, request)
+    claim_request = make_replay_claim_request(
+        request,
+        base_commit_digest=committed.commits[0].commit_digest,
+    )
+    _, claim_result = apply_artifact_hold_expiry_replay_claim(
+        claim_request,
+        committed,
+        server_now_ms=5000,
+        lease_until_ms=5200,
+        authenticated_reaper_principal_id=OWNER_PRINCIPAL,
+        authenticated_reaper_instance_id="hold-reaper-02",
+        authenticated_component_type="artifact-hold-reaper",
+        authenticated_subject="a2a.v1.state.artifact.hold.expire",
+    )
     preimage = artifact_hold_expiry_preimage(
         artifact_id="artifact-01",
         hold_id="hold-01",
@@ -1483,6 +2421,16 @@ def test_artifact_hold_exact_wire_fixture_reproduces_every_byte() -> None:
     assert fixture["expireResultCanonicalHex"] == result.canonical_json().hex()
     assert fixture["commit"] == commit.to_wire_dict()
     assert fixture["commitCanonicalHex"] == commit.canonical_json().hex()
+    assert fixture["replayClaimRequest"] == claim_request.to_wire_dict()
+    assert (
+        fixture["replayClaimRequestCanonicalHex"]
+        == claim_request.canonical_json().hex()
+    )
+    assert fixture["replayClaimResult"] == claim_result.to_wire_dict()
+    assert (
+        fixture["replayClaimResultCanonicalHex"]
+        == claim_result.canonical_json().hex()
+    )
 
     parsed_scan_request = ArtifactHoldExpiryScanRequest.from_canonical_json(
         bytes.fromhex(fixture["scanRequestCanonicalHex"])
@@ -1502,6 +2450,12 @@ def test_artifact_hold_exact_wire_fixture_reproduces_every_byte() -> None:
     parsed_commit = ArtifactHoldExpiryCommit.from_canonical_json(
         bytes.fromhex(fixture["commitCanonicalHex"])
     )
+    parsed_claim_request = ArtifactHoldExpiryReplayClaimRequest.from_canonical_json(
+        bytes.fromhex(fixture["replayClaimRequestCanonicalHex"])
+    )
+    parsed_claim_result = ArtifactHoldExpiryReplayClaimResult.from_canonical_json(
+        bytes.fromhex(fixture["replayClaimResultCanonicalHex"])
+    )
     assert parsed_scan_request == scan_request
     assert parsed_candidate == candidate
     parsed_scan_result.validate_for(parsed_scan_request)
@@ -1510,6 +2464,9 @@ def test_artifact_hold_exact_wire_fixture_reproduces_every_byte() -> None:
     assert parsed_expire_result == result
     assert validate_commit(parsed_commit, parsed_expire_request) == result
     assert parsed_commit == commit
+    assert parsed_claim_request == claim_request
+    parsed_claim_result.validate_for(parsed_claim_request)
+    assert parsed_claim_result == claim_result
     assert set(fixture["expireResult"]) == {
         "schemaVersion",
         "expireOperationId",
@@ -1546,7 +2503,7 @@ def test_nats_actor_subject_graph_is_closed() -> None:
     delete_subject = "a2a.v1.state.artifact.delete"
 
     assert hold_subject in hold_reaper
-    assert "SCAN|EXPIRE" in hold_reaper
+    assert "SCAN\\|EXPIRE\\|REPLAY_CLAIM" in hold_reaper
     assert delete_subject not in hold_reaper
     assert hold_subject not in adapter
     assert delete_subject in adapter and "REQUEST" in adapter
@@ -1558,17 +2515,35 @@ def test_nats_actor_subject_graph_is_closed() -> None:
 
 def test_docs_name_separate_hold_expiry_and_physical_delete_actors() -> None:
     artifact = ARTIFACT_SPEC.read_text(encoding="utf-8")
+    redis = REDIS_SPEC.read_text(encoding="utf-8")
     config = CONFIG_SPEC.read_text(encoding="utf-8")
     plan = IMPLEMENTATION_PLAN.read_text(encoding="utf-8")
 
     assert "artifact:holds:due" in artifact
     assert "ArtifactHoldExpiryScanRequestV1" in artifact
+    assert "ArtifactHoldExpiryReplayClaimRequestV1" in artifact
+    assert "ArtifactHoldExpiryReplayClaimResultV1" in artifact
+    assert "baseCommitDigest" in artifact
+    assert "authorizedCandidateDigest" in artifact
+    assert "leaseUntilMs-issuedAtMs<=300000ms" in artifact
+    assert "REPLAY_CLAIM" in artifact
     assert "ArtifactHoldExpiryRequestV1" in artifact
     assert "ArtifactHoldExpiryResultV1" in artifact
     assert "Artifact Hold Reaper" in artifact
     assert "Artifact Delete Worker" in artifact
     assert "Artifact Hold Reaper不得执行物理对象删除" in artifact
+    assert "hold-expiry-replay-claim:<replayOperationId>" in redis
+    assert "hold-expiry-replay-current:<expireOperationId>" in redis
+    assert "baseCommitDigest" in redis
+    assert "authorizedCandidateDigest" in redis
+    assert "leaseUntilMs-issuedAtMs<=300000ms" in redis
     assert "`artifact-hold-reaper`稳定Principal" in config
     assert "`artifact-delete-worker`稳定Principal" in config
     assert "Artifact Hold Reaper独占artifact.hold.expire" in plan
+    assert "candidate lease duration上限`300000ms`" in plan
+    assert "真实Redis Function、持久化/重启exact replay仍待C2/C3实现与验收" in plan
+    formal_replay_test = "- **TEST-ARTIFACT-HOLD-REPLAY-001**"
+    assert formal_replay_test in artifact
+    assert formal_replay_test in redis
+    assert "TEST-ARTIFACT-HOLD-REPLAY-001" in plan
     assert "89/89 State subject" in plan

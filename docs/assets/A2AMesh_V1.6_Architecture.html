@@ -266,7 +266,6 @@
   <path class="flowOrange" d="M350 520 H332"/>
   <path id="config-controller-to-state" class="flowOrange" data-source="config-controller" data-target="state-service" d="M1012 390 V435"/>
   <path id="reconciliation-to-state" class="flowOrange" data-source="reconciliation-ops" data-target="state-service" d="M1566 390 V396 H1436 V434 H1136 V435"/>
-  <path id="artifact-adapter-to-recovery" class="flowOrange" data-source="artifact-adapter" data-target="recovery-roles" data-permission="REQUEST · audit/recovery evidence" d="M1274 390 V397 H1433 V568 H1345 V604"/>
   <path id="artifact-reaper-to-state" class="flowOrange" data-source="artifact-hold-reaper" data-target="state-service" data-permission="SCAN|EXPIRE|REPLAY_CLAIM · no provider credential" d="M1357 435 V425 H1144 V495 H1136"/>
   <path id="artifact-adapter-to-object-store" class="flowOrange" data-source="artifact-adapter" data-target="object-store" data-permission="REQUEST · upload/finalize" d="M1216 390 V418 H609 V590 H573 V604"/>
   <path id="artifact-delete-worker-to-object-store" class="flowDelete" data-source="artifact-delete-worker" data-target="object-store" data-permission="COMPLETE · provider physical delete" d="M1348 390 V406 H877 V580 H660 V604"/>
@@ -277,7 +276,6 @@
     <rect x="1035" y="734" width="360" height="27" rx="5" fill="#101C22" stroke="#00E5FF" stroke-width="1.5"/>
     <text class="auditLabel" x="1046" y="753">AUDIT RELAY (WORKERS ONLY) → WORM</text>
   </g>
-  <path class="flowOrange" d="M1289 555 V568 H1180 V604"/>
   <path class="flowOrange dashed" d="M1551 604 V568 H1437 V398 H1012 V390"/>
   <path class="flowGreen dashed" d="M412 656 H438"/>
 

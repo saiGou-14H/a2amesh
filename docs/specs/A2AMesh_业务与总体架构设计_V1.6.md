@@ -553,6 +553,7 @@ G0 关闭表示**设计合同冻结**，不表示代码实现、官方兼容或�
 - **TEST-PERF-001**：按固定负载验证路由开销与队列延迟 NFR。
 - **TEST-PRESENCE-001**：Agent 注册、suspect/offline 阈值和多实例聚合正确。
 - **TEST-DOC-001**：README 兼容声明与门禁证据一致。
+- **TEST-ASSET-ARCH-001**：standalone/embedded SVG字节一致；machine-edge allowlist deny-by-default拒绝额外Artifact→Recovery路径；全部53条SVG path签名纳入显式allowlist；HTML在强制真实Chromium gate下通过标准模式、控件、缩放、视口和无page-error检查。该测试只证明资产/浏览器行为，不证明Redis/NATS ACL、AuthProof、Windows/NAT或生产权限。
 - **TEST-VERSION-001**：v0.3/v1.0、Binding URI、Key/事件版本严格隔离。
 - **TEST-OUTBOX-001**：Redis 提交后 Relay 崩溃/重启不丢事件，重复发布由 `taskId:eventSeq` 去重，Projector 不覆盖新快照或终态。
 - **TEST-EFFECT-001**：`PREPARED/APPLYING/APPLIED/UNKNOWN/COMPENSATED/FAILED` 转换、provider idempotency key 和未知结果对账均 fail closed。

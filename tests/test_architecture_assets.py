@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -18,6 +20,18 @@ ANALYSIS_PATH = (
 )
 SVG_PATH = ASSET_DIR / "A2AMesh_V1.6_Architecture.svg"
 HTML_PATH = ASSET_DIR / "A2AMesh_V1.6_Architecture.html"
+EXPECTED_MACHINE_EDGE_IDS = {
+    "config-controller-to-state",
+    "reconciliation-to-state",
+    "artifact-reaper-to-state",
+    "artifact-adapter-to-object-store",
+    "artifact-delete-worker-to-object-store",
+    "state-redis-authority",
+}
+EXPECTED_PATH_COUNT = 53
+EXPECTED_PATH_SIGNATURE_SHA256 = (
+    "7678eb87225928330523c8adfbef7de74d8c4986b1868f5d00f59f42f626db58"
+)
 SVG_START = '<svg xmlns="http://www.w3.org/2000/svg"'
 
 
@@ -31,6 +45,29 @@ def asset_text() -> tuple[str, str, str]:
 
 def normalized_text(element: ET.Element) -> str:
     return " ".join("".join(element.itertext()).split())
+
+
+def path_signature_digest(root: ET.Element) -> tuple[int, str]:
+    signature_keys = (
+        "id",
+        "class",
+        "data-source",
+        "data-target",
+        "data-permission",
+        "d",
+    )
+    signatures = [
+        {key: element.get(key) for key in signature_keys}
+        for element in root.iter()
+        if element.tag.endswith("path")
+    ]
+    canonical = json.dumps(
+        signatures,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return len(signatures), hashlib.sha256(canonical).hexdigest()
 
 
 def test_standalone_and_embedded_svg_are_parseable_and_byte_identical() -> None:
@@ -214,6 +251,38 @@ def test_artifact_hold_reaper_and_delete_worker_are_distinct_components() -> Non
     assert "artifact-hold-state-call" not in by_id
     assert "Artifact Reaper · independent NKey" not in svg
     assert "ordered outbox · PubAck · sweepers" not in svg
+
+
+def test_machine_edges_are_exactly_allowlisted_and_deny_extra_artifact_routes() -> None:
+    svg, _, _ = asset_text()
+    root = ET.fromstring(svg)  # noqa: S314 - repository-owned fixture
+    path_count, path_digest = path_signature_digest(root)
+    assert path_count == EXPECTED_PATH_COUNT
+    assert path_digest == EXPECTED_PATH_SIGNATURE_SHA256
+
+    machine_flows = {
+        element.get("id"): element
+        for element in root.iter()
+        if element.tag.endswith("path")
+        and (
+            element.get("data-source") is not None
+            or element.get("data-target") is not None
+        )
+    }
+
+    assert set(machine_flows) == EXPECTED_MACHINE_EDGE_IDS
+    assert all(
+        element.get("data-source")
+        and element.get("data-target")
+        and element.get("data-source") != element.get("data-target")
+        for element in machine_flows.values()
+    )
+    assert {
+        element.get("data-target")
+        for element in machine_flows.values()
+        if element.get("data-source") == "artifact-adapter"
+    } == {"object-store"}
+    assert "artifact-adapter-to-recovery" not in machine_flows
 
 
 def test_latest_config_and_artifact_contracts_are_visible_without_overclaim() -> None:
