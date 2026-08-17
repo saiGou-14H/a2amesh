@@ -33,11 +33,11 @@ class CanonicalRequestContext:
     config_generation: int
 
     def __post_init__(self) -> None:
-        if not isinstance(self.request_id, str) or not _SAFE_TOKEN.fullmatch(self.request_id):
+        if type(self.request_id) is not str or not _SAFE_TOKEN.fullmatch(self.request_id):
             raise ValueError("request_id must be a safe token")
-        if not isinstance(self.principal, Principal):
+        if type(self.principal) is not Principal:
             raise ValueError("principal must be a verified Canonical Principal")
-        if not isinstance(self.target_agent_id, str) or not _AGENT_ID.fullmatch(
+        if type(self.target_agent_id) is not str or not _AGENT_ID.fullmatch(
             self.target_agent_id
         ):
             raise ValueError("target_agent_id is invalid")

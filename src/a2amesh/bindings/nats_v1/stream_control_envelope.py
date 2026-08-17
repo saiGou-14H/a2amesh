@@ -78,6 +78,8 @@ class StreamControlEnvelopeV1:
     payload: StreamControlPayload
 
     def __post_init__(self) -> None:
+        if type(self.operation) is not StreamControlOperation:
+            raise BindingValidationError("invalid stream control operation")
         for name, value in (
             ("requestId", self.request_id),
             ("callerInstanceId", self.caller_instance_id),
@@ -96,10 +98,8 @@ class StreamControlEnvelopeV1:
             or not 1 <= self.config_generation <= _JSON_SAFE_MAX
         ):
             raise BindingValidationError("configGeneration must be a positive safe integer")
-        if not isinstance(self.operation, StreamControlOperation):
-            raise BindingValidationError("invalid stream control operation")
         expected_payload_type = _PAYLOAD_TYPES[self.operation]
-        if not isinstance(self.payload, expected_payload_type):
+        if type(self.payload) is not expected_payload_type:
             raise BindingValidationError(
                 f"payload type for {self.operation.value} must be "
                 f"{expected_payload_type.__name__}"
@@ -112,9 +112,9 @@ class StreamControlEnvelopeV1:
                 raise BindingValidationError("outer and payload callerInstanceId mismatch")
             if open_payload.config_generation != self.config_generation:
                 raise BindingValidationError("outer and payload configGeneration mismatch")
-        if not isinstance(self.auth_context, AuthContext):
+        if type(self.auth_context) is not AuthContext:
             raise BindingValidationError("authContext must be AuthContext")
-        if not isinstance(self.auth_proof, AuthProof):
+        if type(self.auth_proof) is not AuthProof:
             raise BindingValidationError("authProof must be AuthProof")
         if not isinstance(self.sent_at, datetime) or self.sent_at.tzinfo is None:
             raise BindingValidationError("sentAt must be timezone-aware")

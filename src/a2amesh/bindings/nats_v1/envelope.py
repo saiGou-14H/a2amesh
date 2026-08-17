@@ -51,6 +51,19 @@ class AuthContext:
     issued_at: datetime
     expires_at: datetime
 
+    def __post_init__(self) -> None:
+        string_fields = (
+            self.principal_id,
+            self.credential_id,
+            self.method,
+            self.issuer,
+            self.subject,
+        )
+        if any(type(value) is not str for value in string_fields):
+            raise BindingValidationError("AuthContext string fields must be plain strings")
+        if type(self.issued_at) is not datetime or type(self.expires_at) is not datetime:
+            raise BindingValidationError("AuthContext timestamps must be datetime values")
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "principalId": self.principal_id,
@@ -68,6 +81,10 @@ class AuthProof:
     signer: str
     algorithm: str
     signature: str
+
+    def __post_init__(self) -> None:
+        if any(type(value) is not str for value in (self.signer, self.algorithm, self.signature)):
+            raise BindingValidationError("AuthProof fields must be plain strings")
 
     def to_dict(self) -> dict[str, str]:
         return {
@@ -94,6 +111,23 @@ class BindingRequestEnvelope:
     payload: ProtobufMessage
 
     def __post_init__(self) -> None:
+        if type(self.operation) is not Operation:
+            raise BindingValidationError("operation must be an official Operation")
+        string_fields = (
+            self.request_id,
+            self.caller_instance_id,
+            self.caller_agent_id,
+            self.target_agent_id,
+            self.reply_subject,
+        )
+        if any(type(value) is not str for value in string_fields):
+            raise BindingValidationError("binding envelope string fields must be plain strings")
+        if self.stream_open_id is not None and type(self.stream_open_id) is not str:
+            raise BindingValidationError("streamOpenId must be a plain string or null")
+        if type(self.auth_context) is not AuthContext:
+            raise BindingValidationError("authContext must be the NATS binding AuthContext")
+        if type(self.auth_proof) is not AuthProof:
+            raise BindingValidationError("authProof must be the NATS binding AuthProof")
         if not _SAFE_TOKEN.fullmatch(self.request_id):
             raise BindingValidationError("requestId is not a safe token")
         if not _SAFE_TOKEN.fullmatch(self.caller_instance_id):
@@ -125,7 +159,7 @@ class BindingRequestEnvelope:
         ):
             raise BindingValidationError("AuthContext is not valid at sentAt")
         expected_type = OPERATION_SPECS[self.operation].request_type
-        if not isinstance(self.payload, expected_type):
+        if type(self.payload) is not expected_type:
             raise BindingValidationError(
                 f"payload type for {self.operation.value} must be {expected_type.__name__}"
             )

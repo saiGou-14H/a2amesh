@@ -68,6 +68,16 @@ class NatsCallerIdentity:
     allowed_reply_prefix: str
 
     def __post_init__(self) -> None:
+        if any(
+            type(value) is not str
+            for value in (
+                self.connection_public_key,
+                self.caller_agent_id,
+                self.caller_instance_id,
+                self.allowed_reply_prefix,
+            )
+        ):
+            raise ValueError("NATS caller identity fields must be plain strings")
         if not self.connection_public_key.startswith("U"):
             raise ValueError("NATS caller connection key must be a user NKey")
         if not _AGENT_ID.fullmatch(self.caller_agent_id):
@@ -136,7 +146,7 @@ _A2A_ERROR_NAMES = frozenset(candidate.__name__ for candidate in _A2A_ERROR_CLAS
 def _safe_a2a_error_fields(error: A2AError) -> tuple[str, str]:
     """Map only known official errors to fixed, non-sensitive fields."""
     error_type = next(
-        (candidate.__name__ for candidate in _A2A_ERROR_CLASSES if isinstance(error, candidate)),
+        (candidate.__name__ for candidate in _A2A_ERROR_CLASSES if type(error) is candidate),
         None,
     )
     if error_type is None:
@@ -147,7 +157,9 @@ def _safe_a2a_error_fields(error: A2AError) -> tuple[str, str]:
 def _safe_binding_error_fields(
     error_type: object, _error_message: object
 ) -> tuple[str, str]:
-    if not isinstance(error_type, str):
+    if type(error_type) is not str:
+        return "InternalError", _CANONICAL_A2A_MESSAGE
+    if len(error_type) > 128:
         return "InternalError", _CANONICAL_A2A_MESSAGE
     if error_type in _BINDING_ERROR_MESSAGES:
         return error_type, _BINDING_ERROR_MESSAGES[error_type]

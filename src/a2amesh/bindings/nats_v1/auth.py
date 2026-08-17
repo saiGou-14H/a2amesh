@@ -6,6 +6,7 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
+from types import MappingProxyType
 from typing import Protocol
 
 import nkeys
@@ -30,6 +31,7 @@ from .envelope import (
 AUTH_ALGORITHM = "nkey-ed25519"
 RPC_SUBJECT_PREFIX = "a2a.v1.rpc."
 _REPLY_PREFIX = re.compile(r"^_INBOX\.a2amesh\.[A-Za-z0-9_-]+\.$")
+_JSON_SAFE_MAX = 9_007_199_254_740_991
 
 
 class SignedBindingEnvelope(Protocol):
@@ -149,7 +151,12 @@ class BindingAuthVerifier:
             raise ValueError("clock skew cannot be negative")
         if not 1 <= max_auth_lifetime_seconds <= 900:
             raise ValueError("max AuthContext lifetime must be between 1 and 900 seconds")
-        self._signer_policies = dict(signer_policies)
+        policy_items = list(signer_policies.items())
+        if any(type(key) is not str for key, _ in policy_items):
+            raise ValueError("binding signer policy keys must be plain strings")
+        if any(type(value) is not SignerPolicy for _, value in policy_items):
+            raise ValueError("binding signer policy values must be SignerPolicy instances")
+        self._signer_policies = MappingProxyType(dict(policy_items))
         self._replay_guard = replay_guard
         self._clock_skew = timedelta(seconds=clock_skew_seconds)
         self._max_auth_lifetime = timedelta(seconds=max_auth_lifetime_seconds)
@@ -167,6 +174,12 @@ class BindingAuthVerifier:
         active_config_generation: int,
         now: datetime | None = None,
     ) -> VerifiedBindingIdentity:
+        if type(active_config_generation) is not int or not (
+            1 <= active_config_generation <= _JSON_SAFE_MAX
+        ):
+            raise BindingValidationError(
+                "expected config generation must be a positive safe integer"
+            )
         return await self.verify_subject(
             envelope,
             received_subject=received_subject,
@@ -194,6 +207,12 @@ class BindingAuthVerifier:
         expected_config_generation: int,
         now: datetime | None = None,
     ) -> VerifiedBindingIdentity:
+        if type(expected_config_generation) is not int or not (
+            1 <= expected_config_generation <= _JSON_SAFE_MAX
+        ):
+            raise BindingValidationError(
+                "expected config generation must be a positive safe integer"
+            )
         current = datetime.now(UTC) if now is None else now
         if current.tzinfo is None:
             raise BindingValidationError("verification clock must be timezone-aware")
@@ -201,6 +220,8 @@ class BindingAuthVerifier:
 
         proof = envelope.auth_proof
         context = envelope.auth_context
+        if type(context) is not AuthContext or type(proof) is not AuthProof:
+            raise BindingValidationError("binding authContext/authProof type is invalid")
         policy = self._signer_policies.get(proof.signer)
         if proof.algorithm != AUTH_ALGORITHM or policy is None:
             raise BindingValidationError("untrusted binding signer")
