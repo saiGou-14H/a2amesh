@@ -1,6 +1,7 @@
 recursive-include tests/fixtures *.json
 recursive-include tests/conformance *.py
 recursive-include scripts *.py
+recursive-include src/a2amesh/conformance/fixtures *.json
 include .gitignore
 include .github/workflows/ci.yml
 include tests/test_architecture_browser_smoke.py

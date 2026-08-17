@@ -343,10 +343,14 @@ mcp = [
 创建：
 
 ```text
-tests/fixtures/a2a_v1/
+src/a2amesh/conformance/official_fixtures.py
+src/a2amesh/conformance/fixtures/a2a_v1/
 tests/conformance/test_official_types.py
 tests/conformance/test_compatibility_claims.py
+tests/conformance/test_wheel_resources.py
 scripts/verify_a2a_fixtures.py
+scripts/verify_wheel_resources.py
+scripts/run_ci.py
 ```
 
 修改：
@@ -368,6 +372,7 @@ docs/specs/
 6. 运行当前测试并保存机器可读 CI 报告；不在文档中手工固化易漂移的通过数。
 7. CI 增加 `pytest`、`ruff`、`compileall`、文档链接检查。
 8. 增加非空 tenant、三类 Credential、AuthContext 和 MCP messageId fixture。
+9. 官方 fixture 以 package resource 作为唯一权威源；CI 无依赖、非 editable 安装 wheel 后读取并验证全部资源。
 
 ### 7.4 退出门禁
 

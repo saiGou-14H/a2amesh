@@ -48,6 +48,7 @@ def test_default_ci_gate_contract_is_closed() -> None:
     assert [gate.gate_id for gate in runner.DEFAULT_GATES] == [
         "official-fixtures",
         "docs-links",
+        "wheel-resources",
         "pytest",
         "ruff",
         "compileall",
@@ -56,6 +57,7 @@ def test_default_ci_gate_contract_is_closed() -> None:
     commands = {gate.gate_id: gate.command for gate in runner.DEFAULT_GATES}
     assert "scripts/verify_a2a_fixtures.py" in commands["official-fixtures"]
     assert "scripts/verify_docs_links.py" in commands["docs-links"]
+    assert "scripts/verify_wheel_resources.py" in commands["wheel-resources"]
     assert "tests" in commands["compileall"]
 
 
@@ -67,7 +69,9 @@ def test_development_and_browser_dependencies_are_pinned() -> None:
         "pytest==9.1.1",
         "pytest-asyncio==1.4.0",
         "ruff==0.16.3",
+        "setuptools==84.0.0",
     }
+    assert project["build-system"]["requires"] == ["setuptools==84.0.0"]
     assert optional["browser-test"] == ["playwright==1.62.0"]
 
 

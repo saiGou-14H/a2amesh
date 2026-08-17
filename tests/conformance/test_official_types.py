@@ -18,9 +18,9 @@ from a2a.utils.errors import A2A_REASON_TO_ERROR, JSON_RPC_ERROR_CODE_MAP, TaskN
 from google.protobuf.json_format import MessageToDict, ParseDict, ParseError
 from google.protobuf.message import Message as ProtobufMessage
 
+from a2amesh.conformance import copy_official_fixtures, read_official_fixture
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
-FIXTURES = REPO_ROOT / "tests" / "fixtures" / "a2a_v1"
-MANIFEST = FIXTURES / "official_fixture_manifest.json"
 EXPECTED_FIXTURE_IDS = {
     "agent-card",
     "message-user-text",
@@ -33,7 +33,7 @@ EXPECTED_FIXTURE_IDS = {
 
 
 def _load_manifest() -> dict[str, object]:
-    return json.loads(MANIFEST.read_text(encoding="utf-8"))
+    return read_official_fixture("official_fixture_manifest.json")
 
 
 def _load_verifier() -> ModuleType:
@@ -87,7 +87,7 @@ def test_official_protobuf_fixtures_strictly_roundtrip() -> None:
         if entry["kind"] != "protobuf":
             continue
         message_type = getattr(a2a_types, entry["type"])
-        payload = json.loads((FIXTURES / entry["file"]).read_text(encoding="utf-8"))
+        payload = read_official_fixture(entry["file"])
         message = ParseDict(payload, message_type(), ignore_unknown_fields=False)
         assert MessageToDict(message) == payload
 
@@ -100,7 +100,7 @@ def test_official_protobuf_fixtures_reject_unknown_parallel_fields() -> None:
         if entry["kind"] != "protobuf":
             continue
         message_type = getattr(a2a_types, entry["type"])
-        payload = json.loads((FIXTURES / entry["file"]).read_text(encoding="utf-8"))
+        payload = read_official_fixture(entry["file"])
         payload["legacyParallelField"] = True
         with pytest.raises(ParseError):
             ParseDict(payload, message_type(), ignore_unknown_fields=False)
@@ -111,7 +111,7 @@ def test_official_task_not_found_error_fixture_matches_sdk_mapping() -> None:
     entries = manifest["fixtures"]
     assert isinstance(entries, list)
     entry = next(item for item in entries if item["id"] == "error-task-not-found")
-    payload = json.loads((FIXTURES / entry["file"]).read_text(encoding="utf-8"))
+    payload = read_official_fixture(entry["file"])
     parsed = JSONRPCError.model_validate(payload)
     assert parsed.model_dump(mode="json", exclude_none=True) == payload
     error_type = A2A_REASON_TO_ERROR[entry["reason"]]
@@ -124,7 +124,7 @@ def test_official_task_not_found_error_fixture_matches_sdk_mapping() -> None:
 
 
 def test_official_message_fixture_preserves_semantic_fields() -> None:
-    payload = json.loads((FIXTURES / "message_user_text.json").read_text(encoding="utf-8"))
+    payload = read_official_fixture("message_user_text.json")
     message = ParseDict(payload, a2a_types.Message(), ignore_unknown_fields=False)
     assert message.message_id == "msg-fixture-001"
     assert message.role == a2a_types.Role.ROLE_USER
@@ -134,13 +134,13 @@ def test_official_message_fixture_preserves_semantic_fields() -> None:
 
 def test_fixture_verifier_checks_every_manifest_entry() -> None:
     verifier = _load_verifier()
-    assert verifier.verify_fixtures(FIXTURES) == len(EXPECTED_FIXTURE_IDS)
+    assert verifier.verify_packaged_fixtures() == len(EXPECTED_FIXTURE_IDS)
 
 
 def test_fixture_verifier_returns_failure_for_mapping_drift(tmp_path: Path) -> None:
     verifier = _load_verifier()
     copied = tmp_path / "fixtures"
-    shutil.copytree(FIXTURES, copied)
+    copy_official_fixtures(copied)
     path = copied / "official_fixture_manifest.json"
     manifest = json.loads(path.read_text(encoding="utf-8"))
     entries = manifest["fixtures"]
@@ -153,7 +153,7 @@ def test_fixture_verifier_returns_failure_for_mapping_drift(tmp_path: Path) -> N
 def test_fixture_verifier_returns_failure_for_invalid_protojson(tmp_path: Path) -> None:
     verifier = _load_verifier()
     copied = tmp_path / "fixtures"
-    shutil.copytree(FIXTURES, copied)
+    copy_official_fixtures(copied)
     path = copied / "official_task_completed.json"
     payload = json.loads(path.read_text(encoding="utf-8"))
     payload["legacyParallelField"] = True
@@ -166,7 +166,7 @@ def test_fixture_verifier_rejects_symlinked_fixture(tmp_path: Path) -> None:
         pytest.skip("symlink fixture requires POSIX test permissions")
     verifier = _load_verifier()
     copied = tmp_path / "fixtures"
-    shutil.copytree(FIXTURES, copied)
+    copy_official_fixtures(copied)
     path = copied / "message_user_text.json"
     path.unlink()
     try:
@@ -179,7 +179,7 @@ def test_fixture_verifier_rejects_symlinked_fixture(tmp_path: Path) -> None:
 def test_fixture_verifier_rejects_task_not_found_wire_mutation(tmp_path: Path) -> None:
     verifier = _load_verifier()
     copied = tmp_path / "fixtures"
-    shutil.copytree(FIXTURES, copied)
+    copy_official_fixtures(copied)
     path = copied / "official_task_not_found_error.json"
     payload = json.loads(path.read_text(encoding="utf-8"))
     payload["message"] = "mutated"
@@ -192,7 +192,7 @@ def test_fixture_verifier_rejects_manifest_symlink(tmp_path: Path) -> None:
         pytest.skip("symlink fixture requires POSIX test permissions")
     verifier = _load_verifier()
     copied = tmp_path / "fixtures"
-    shutil.copytree(FIXTURES, copied)
+    copy_official_fixtures(copied)
     manifest = copied / "official_fixture_manifest.json"
     outside = tmp_path / "manifest.json"
     shutil.copy2(manifest, outside)
@@ -207,7 +207,7 @@ def test_fixture_verifier_rejects_manifest_symlink(tmp_path: Path) -> None:
 def test_fixture_verifier_rejects_duplicate_json_keys(tmp_path: Path) -> None:
     verifier = _load_verifier()
     copied = tmp_path / "fixtures"
-    shutil.copytree(FIXTURES, copied)
+    copy_official_fixtures(copied)
 
     manifest = copied / "official_fixture_manifest.json"
     manifest_text = manifest.read_text(encoding="utf-8")

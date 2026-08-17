@@ -8,6 +8,7 @@ import json
 import sys
 from importlib.metadata import version
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any
 
 from a2a import types as a2a_types
@@ -16,6 +17,8 @@ from a2a.server.request_handlers import build_error_response
 from a2a.utils.errors import A2A_REASON_TO_ERROR, JSON_RPC_ERROR_CODE_MAP, TaskNotFoundError
 from google.protobuf.json_format import Error as ProtoJsonError
 from google.protobuf.json_format import MessageToDict, ParseDict
+
+from a2amesh.conformance import copy_official_fixtures
 
 _MANIFEST_NAME = "official_fixture_manifest.json"
 _MANIFEST_KEYS = {
@@ -197,17 +200,29 @@ def verify_fixtures(fixtures_dir: Path) -> int:
     return len(entries)
 
 
+def verify_packaged_fixtures() -> int:
+    """Materialize and verify the installable package-resource fixture set."""
+    with TemporaryDirectory(prefix="a2amesh-official-fixtures-") as temporary:
+        fixtures_dir = Path(temporary) / "a2a_v1"
+        copy_official_fixtures(fixtures_dir)
+        return verify_fixtures(fixtures_dir)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "fixtures",
         nargs="?",
         type=Path,
-        default=Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "a2a_v1",
+        default=None,
     )
     args = parser.parse_args(argv)
     try:
-        count = verify_fixtures(args.fixtures)
+        count = (
+            verify_packaged_fixtures()
+            if args.fixtures is None
+            else verify_fixtures(args.fixtures)
+        )
     except (OSError, ValueError, ProtoJsonError) as exc:
         print(f"official A2A fixture verification failed: {exc}", file=sys.stderr)
         return 1

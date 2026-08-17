@@ -41,6 +41,7 @@ DEFAULT_GATES = (
             "docs/specs",
         ),
     ),
+    Gate("wheel-resources", (sys.executable, "scripts/verify_wheel_resources.py")),
     Gate("pytest", (sys.executable, "-m", "pytest", "-q")),
     Gate("ruff", (sys.executable, "-m", "ruff", "check", ".")),
     Gate(

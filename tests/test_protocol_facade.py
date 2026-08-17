@@ -11,9 +11,8 @@ from a2a import types as official
 from google.protobuf.json_format import ParseError
 
 from a2amesh import protocol
+from a2amesh.conformance import read_official_fixture
 from a2amesh.contracts import models as legacy_models
-
-FIXTURES = Path(__file__).parent / "fixtures" / "a2a_v1"
 
 
 def test_facade_exports_official_types_by_identity() -> None:
@@ -29,7 +28,7 @@ def test_facade_exports_official_types_by_identity() -> None:
 
 
 def test_facade_protojson_roundtrip_uses_official_names() -> None:
-    fixture = json.loads((FIXTURES / "message_user_text.json").read_text())
+    fixture = read_official_fixture("message_user_text.json")
     message = protocol.from_protojson(fixture, protocol.Message)
 
     assert protocol.to_protojson_dict(message) == fixture
