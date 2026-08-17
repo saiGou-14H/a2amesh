@@ -2,8 +2,8 @@
 
 The ordinary test suite collects this test and skips it when the optional Python
 Playwright package is absent. The release gate must run it explicitly with:
-    A2AMESH_REQUIRE_BROWSER_GATE=1 uv run --with playwright pytest -q \
-    tests/test_architecture_browser_smoke.py
+    A2AMESH_REQUIRE_BROWSER_GATE=1 uv run --locked --extra test \
+    --extra browser-test pytest -q tests/test_architecture_browser_smoke.py
 When `A2AMESH_REQUIRE_BROWSER_GATE=1`, missing Playwright is a failure rather than a skip.
 """
 
@@ -29,8 +29,8 @@ def test_architecture_html_in_real_chromium_across_viewports() -> None:
             playwright_api = import_module("playwright.sync_api")
         except ModuleNotFoundError:
             pytest.fail(
-                "release browser gate requires Playwright; install it with "
-                "`uv run --with playwright`",
+                "release browser gate requires Playwright; install the locked "
+                "`browser-test` extra",
                 pytrace=False,
             )
     else:
@@ -38,8 +38,9 @@ def test_architecture_html_in_real_chromium_across_viewports() -> None:
             "playwright.sync_api",
             reason=(
                 "real Chromium gate requires the optional Playwright package; "
-                "run with `A2AMESH_REQUIRE_BROWSER_GATE=1 uv run --with playwright "
-                "pytest tests/test_architecture_browser_smoke.py`"
+                "run with `A2AMESH_REQUIRE_BROWSER_GATE=1 uv run --locked "
+                "--extra test --extra browser-test pytest "
+                "tests/test_architecture_browser_smoke.py`"
             ),
         )
     results: list[dict[str, Any]] = []

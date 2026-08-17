@@ -1,0 +1,56 @@
+name: A2AMesh CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  core-gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          python-version: "3.11"
+      - name: Install locked test environment
+        run: uv sync --locked --extra test
+      - name: Run machine-readable gates
+        run: >-
+          uv run --locked --extra test python scripts/run_ci.py
+          --report .ci-artifacts/ci-report.json
+      - name: Upload CI report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: a2amesh-ci-report
+          path: .ci-artifacts/ci-report.json
+          if-no-files-found: error
+
+  chromium-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          python-version: "3.11"
+      - name: Install locked browser environment
+        run: uv sync --locked --extra test --extra browser-test
+      - name: Install Chromium
+        run: uv run --locked --extra browser-test playwright install --with-deps chromium
+      - name: Run required browser gate
+        env:
+          A2AMESH_REQUIRE_BROWSER_GATE: "1"
+        run: >-
+          uv run --locked --extra test --extra browser-test pytest -q
+          tests/test_architecture_browser_smoke.py

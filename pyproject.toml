@@ -27,7 +27,15 @@ gateway = [
 ]
 mcp = ["mcp==2.0.0"]
 state = ["redis[hiredis]==8.1.0"]
-test = ["pytest", "pytest-asyncio", "httpx>=0.27.0", "mcp==2.0.0"]
+test = [
+    "build==1.5.0",
+    "httpx>=0.27.0",
+    "mcp==2.0.0",
+    "pytest==9.1.1",
+    "pytest-asyncio==1.4.0",
+    "ruff==0.16.3",
+]
+browser-test = ["playwright==1.62.0"]
 
 [build-system]
 requires = ["setuptools>=68"]

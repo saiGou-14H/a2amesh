@@ -8,5 +8,6 @@ venv/
 .pytest_cache/
 dist/
 build/
+.ci-artifacts/
 nats/nats.test.conf
 nats/.test-seeds.env
