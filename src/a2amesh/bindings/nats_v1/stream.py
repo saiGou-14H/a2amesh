@@ -66,11 +66,11 @@ class StreamSessionFrameV1:
     payload_digest: str
 
     def __post_init__(self) -> None:
-        if not isinstance(self.stream_session_id, str) or not _SAFE_TOKEN.fullmatch(
+        if type(self.stream_session_id) is not str or not _SAFE_TOKEN.fullmatch(
             self.stream_session_id
         ):
             raise BindingValidationError("streamSessionId is not a safe token")
-        if not isinstance(self.stream_open_id, str) or not _SAFE_TOKEN.fullmatch(
+        if type(self.stream_open_id) is not str or not _SAFE_TOKEN.fullmatch(
             self.stream_open_id
         ):
             raise BindingValidationError("streamOpenId is not a safe token")
@@ -86,9 +86,9 @@ class StreamSessionFrameV1:
             raise BindingValidationError("eventSeq is outside JSON safe integer range")
         if type(self.final) is not bool:
             raise BindingValidationError("final must be boolean")
-        if not isinstance(self.canonical_stream_response, protocol.StreamResponse):
+        if type(self.canonical_stream_response) is not protocol.StreamResponse:
             raise BindingValidationError("canonicalStreamResponse must be official StreamResponse")
-        if not isinstance(self.payload_digest, str) or not _DIGEST.fullmatch(
+        if type(self.payload_digest) is not str or not _DIGEST.fullmatch(
             self.payload_digest
         ):
             raise BindingValidationError("payloadDigest must be lowercase SHA-256 hex")
@@ -197,7 +197,7 @@ class StreamFrameCursorV1:
             ("streamOpenId", self.stream_open_id),
             ("taskId", self.task_id),
         ):
-            if not isinstance(value, str) or not _SAFE_TOKEN.fullmatch(value):
+            if type(value) is not str or not _SAFE_TOKEN.fullmatch(value):
                 raise BindingValidationError(f"{field_name} is not a safe token")
         for field_name, value in (
             ("snapshotEventSeq", self.snapshot_event_seq),
@@ -230,7 +230,7 @@ class StreamFrameCursorV1:
                 raise BindingValidationError(
                     "advanced cursor lastEventSeq must exceed snapshotEventSeq"
                 )
-            if not isinstance(self.last_payload_digest, str) or not _DIGEST.fullmatch(
+            if type(self.last_payload_digest) is not str or not _DIGEST.fullmatch(
                 self.last_payload_digest
             ):
                 raise BindingValidationError(
@@ -240,7 +240,7 @@ class StreamFrameCursorV1:
     def accept(
         self, frame: StreamSessionFrameV1
     ) -> tuple[StreamFrameCursorV1, StreamFrameDisposition]:
-        if not isinstance(frame, StreamSessionFrameV1):
+        if type(frame) is not StreamSessionFrameV1:
             raise BindingValidationError("live frame must be StreamSessionFrameV1")
         if frame.stream_session_id != self.stream_session_id:
             raise BindingValidationError("live frame streamSessionId mismatch")
@@ -298,20 +298,20 @@ class StreamSessionOpenedV1:
     initial_frame: StreamSessionFrameV1
 
     def __post_init__(self) -> None:
-        if not isinstance(self.stream_session_id, str) or not _SAFE_TOKEN.fullmatch(
+        if type(self.stream_session_id) is not str or not _SAFE_TOKEN.fullmatch(
             self.stream_session_id
         ):
             raise BindingValidationError("streamSessionId is not a safe token")
-        if not isinstance(self.stream_open_id, str) or not _SAFE_TOKEN.fullmatch(
+        if type(self.stream_open_id) is not str or not _SAFE_TOKEN.fullmatch(
             self.stream_open_id
         ):
             raise BindingValidationError("streamOpenId is not a safe token")
-        if not isinstance(self.task_id, str) or not _SAFE_TOKEN.fullmatch(self.task_id):
+        if type(self.task_id) is not str or not _SAFE_TOKEN.fullmatch(self.task_id):
             raise BindingValidationError("taskId is not a safe token")
-        if not isinstance(self.operation, Operation) or self.operation not in _STREAMING_OPERATIONS:
+        if type(self.operation) is not Operation or self.operation not in _STREAMING_OPERATIONS:
             raise BindingValidationError("stream session operation must be streaming")
         if (
-            not isinstance(self.caller_delivery_subject, str)
+            type(self.caller_delivery_subject) is not str
             or not _DELIVERY_SUBJECT.fullmatch(self.caller_delivery_subject)
         ):
             raise BindingValidationError("callerDeliverySubject is invalid")
@@ -322,9 +322,9 @@ class StreamSessionOpenedV1:
             or not 0 <= self.snapshot_event_seq <= 9_007_199_254_740_991
         ):
             raise BindingValidationError("snapshotEventSeq is outside JSON safe integer range")
-        if not isinstance(self.expires_at, datetime) or self.expires_at.tzinfo is None:
+        if type(self.expires_at) is not datetime or self.expires_at.tzinfo is None:
             raise BindingValidationError("expiresAt must be timezone-aware")
-        if not isinstance(self.initial_frame, StreamSessionFrameV1):
+        if type(self.initial_frame) is not StreamSessionFrameV1:
             raise BindingValidationError("initialFrame must be StreamSessionFrameV1")
         frame = self.initial_frame
         if frame.stream_session_id != self.stream_session_id:
@@ -455,6 +455,8 @@ def _format_timestamp_ms(value: datetime) -> str:
 
 
 def _parse_timestamp(value: str) -> datetime:
+    if type(value) is not str:
+        raise BindingValidationError("stream expiresAt timestamp must be a plain string")
     try:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError as exc:

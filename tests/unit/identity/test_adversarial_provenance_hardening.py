@@ -21,6 +21,8 @@ from a2amesh.bindings.nats_v1 import (
     BindingValidationError,
     StreamControlAuthVerifier,
     StreamControlEnvelopeV1,
+    StreamFrameCursorV1,
+    StreamSessionOpenedV1,
     sign_request_envelope,
     sign_stream_control_envelope,
 )
@@ -133,6 +135,39 @@ class MutablePrefix(str):
     def startswith(self, prefix: object, *args: object) -> bool:
         del prefix, args
         return self.accepted_prefix == "allowed"
+
+
+class ForgedDeliverySubject(str):
+    stream_open_id: str
+
+    def __new__(cls, value: str, stream_open_id: str) -> ForgedDeliverySubject:
+        result = str.__new__(cls, value)
+        result.stream_open_id = stream_open_id
+        return result
+
+    def rsplit(self, sep: str | None = None, maxsplit: int = -1) -> list[str]:
+        del sep, maxsplit
+        return ["forged", self.stream_open_id]
+
+
+class MutableDateTime(datetime):
+    pass
+
+
+class ForgedDigest(str):
+    accepted: str
+
+    def __new__(cls, value: str, accepted: str) -> ForgedDigest:
+        result = str.__new__(cls, value)
+        result.accepted = accepted
+        return result
+
+    def __eq__(self, other: object) -> bool:
+        return other == self.accepted
+
+    def __ne__(self, other: object) -> bool:
+        del other
+        return False
 
 
 class UnknownDerived(InvalidParamsError):
@@ -390,6 +425,108 @@ def test_nats_server_auth_reference_cannot_be_replaced() -> None:
     replacement_resolver = object()
     server.identity_resolver = replacement_resolver  # type: ignore[assignment]
     assert server.identity_resolver is replacement_resolver
+
+
+def stream_opened_fixture() -> StreamSessionOpenedV1:
+    data = json.loads((FIXTURES / "nats_stream_session_opened.json").read_text())
+    return StreamSessionOpenedV1.from_dict(data)
+
+
+@pytest.mark.parametrize(
+    "field_name",
+    ["stream_session_id", "stream_open_id", "payload_digest"],
+)
+def test_stream_frame_rejects_all_string_subclasses(field_name: str) -> None:
+    frame = stream_opened_fixture().initial_frame
+    value = getattr(frame, field_name)
+    with pytest.raises(BindingValidationError):
+        replace(frame, **{field_name: MutableClaim(value, value)})
+
+
+def test_stream_frame_rejects_forged_digest_equality() -> None:
+    frame = stream_opened_fixture().initial_frame
+    forged = ForgedDigest("f" * 64, frame.compute_payload_digest())
+    with pytest.raises(BindingValidationError, match="payloadDigest"):
+        replace(frame, payload_digest=forged)
+
+
+@pytest.mark.parametrize(
+    "field_name",
+    ["stream_session_id", "stream_open_id", "task_id"],
+)
+def test_stream_cursor_rejects_identity_string_subclasses(field_name: str) -> None:
+    opened = stream_opened_fixture()
+    cursor = StreamFrameCursorV1(
+        stream_session_id=opened.stream_session_id,
+        stream_open_id=opened.stream_open_id,
+        task_id=opened.task_id,
+        snapshot_event_seq=opened.snapshot_event_seq,
+    )
+    value = getattr(cursor, field_name)
+    with pytest.raises(BindingValidationError):
+        replace(cursor, **{field_name: MutableClaim(value, value)})
+
+
+def test_stream_cursor_rejects_payload_digest_subclass() -> None:
+    opened = stream_opened_fixture()
+    cursor = StreamFrameCursorV1(
+        stream_session_id=opened.stream_session_id,
+        stream_open_id=opened.stream_open_id,
+        task_id=opened.task_id,
+        snapshot_event_seq=opened.snapshot_event_seq,
+        last_sequence=1,
+        last_event_seq=opened.snapshot_event_seq + 1,
+        last_payload_digest="0" * 64,
+    )
+    with pytest.raises(BindingValidationError, match="payload digest"):
+        replace(cursor, last_payload_digest=MutableClaim("0" * 64, "0" * 64))
+
+
+@pytest.mark.parametrize(
+    "field_name",
+    ["stream_session_id", "stream_open_id", "task_id", "caller_delivery_subject"],
+)
+def test_stream_opened_rejects_string_subclasses(field_name: str) -> None:
+    opened = stream_opened_fixture()
+    value = getattr(opened, field_name)
+    with pytest.raises(BindingValidationError):
+        replace(opened, **{field_name: MutableClaim(value, value)})
+
+
+def test_stream_opened_rejects_datetime_subclass_and_forged_delivery_binding() -> None:
+    opened = stream_opened_fixture()
+    expires_at = opened.expires_at
+    forged_time = MutableDateTime(
+        expires_at.year,
+        expires_at.month,
+        expires_at.day,
+        expires_at.hour,
+        expires_at.minute,
+        expires_at.second,
+        expires_at.microsecond,
+        tzinfo=expires_at.tzinfo,
+    )
+    with pytest.raises(BindingValidationError, match="expiresAt"):
+        replace(opened, expires_at=forged_time)
+
+    forged_session_id = ForgedDigest(
+        "attacker-session",
+        opened.initial_frame.stream_session_id,
+    )
+    with pytest.raises(BindingValidationError, match="streamSessionId"):
+        replace(opened, stream_session_id=forged_session_id)
+
+    forged_subject = ForgedDeliverySubject(
+        "_DELIVER.a2amesh.stream.caller.gateway.attacker-open",
+        opened.stream_open_id,
+    )
+    with pytest.raises(BindingValidationError, match="callerDeliverySubject"):
+        replace(opened, caller_delivery_subject=forged_subject)
+
+    raw = json.loads((FIXTURES / "nats_stream_session_opened.json").read_text())
+    raw["expiresAt"] = MutableClaim(raw["expiresAt"], raw["expiresAt"])
+    with pytest.raises(BindingValidationError, match="plain string"):
+        StreamSessionOpenedV1.from_dict(raw)
 
 
 def test_wire_auth_context_type_is_not_confused_with_legacy_context() -> None:
