@@ -314,21 +314,36 @@ class V1NatsClient:
         )
 
 
+_V1_NATS_SERVER_SEALED_FIELDS = frozenset(
+    {
+        "active_config_generation",
+        "_auth",
+        "_clock",
+        "_sealed",
+        "auth",
+    }
+)
+
+
 class V1NatsServer:
     """NATS v1 server dispatching verified official requests to CanonicalApplication."""
 
-    _SEALED_CONFIG_FIELDS = frozenset(
-        {
-            "active_config_generation",
-            "_auth",
-            "_clock",
-            "_sealed",
-            "auth",
-        }
+    __slots__ = (
+        "__weakref__",
+        "nc",
+        "agent_id",
+        "application",
+        "identity_resolver",
+        "active_config_generation",
+        "_auth",
+        "_clock",
+        "_subscription",
+        "_tasks",
+        "_sealed",
     )
 
     def __setattr__(self, name: str, value: object) -> None:
-        if getattr(self, "_sealed", False) and name in self._SEALED_CONFIG_FIELDS:
+        if getattr(self, "_sealed", False) and name in _V1_NATS_SERVER_SEALED_FIELDS:
             raise AttributeError("V1NatsServer security configuration is immutable")
         object.__setattr__(self, name, value)
 

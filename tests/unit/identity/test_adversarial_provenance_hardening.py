@@ -362,6 +362,19 @@ def test_nats_server_auth_reference_cannot_be_replaced() -> None:
             {"forged": legacy_policy("forged")},
             MemoryReplayGuard(),
         )
+    with pytest.raises(AttributeError):
+        server._auth = BindingAuthVerifier(  # type: ignore[assignment]
+            {"forged": legacy_policy("forged")},
+            MemoryReplayGuard(),
+        )
+    with pytest.raises(AttributeError):
+        server._SEALED_CONFIG_FIELDS = frozenset()  # type: ignore[misc]
+    with pytest.raises(AttributeError):
+        _ = server.__dict__
+
+    replacement_resolver = object()
+    server.identity_resolver = replacement_resolver  # type: ignore[assignment]
+    assert server.identity_resolver is replacement_resolver
 
 
 def test_wire_auth_context_type_is_not_confused_with_legacy_context() -> None:
