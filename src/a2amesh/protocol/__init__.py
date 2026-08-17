@@ -5,6 +5,13 @@ this package.  ``a2amesh.contracts.models`` remains only for the legacy private
 prototype during migration.
 """
 
+from .state_machine import (
+    TASK_STATE_TRANSITIONS,
+    TERMINAL_TASK_STATES,
+    is_terminal_task_state,
+    legal_task_state_transitions,
+    validate_task_state_transition,
+)
 from .types import (
     A2A_PROTOCOL_VERSION,
     A2A_SDK_VERSION,
@@ -69,4 +76,9 @@ __all__ = [
     "from_protojson",
     "to_protojson_bytes",
     "to_protojson_dict",
+    "TASK_STATE_TRANSITIONS",
+    "TERMINAL_TASK_STATES",
+    "is_terminal_task_state",
+    "legal_task_state_transitions",
+    "validate_task_state_transition",
 ]

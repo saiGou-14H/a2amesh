@@ -18,6 +18,7 @@ from google.protobuf.message import Message as ProtobufMessage
 
 from a2amesh import protocol
 from a2amesh.core import Operation
+from a2amesh.protocol.state_machine import is_terminal_task_state
 
 from .envelope import BindingValidationError
 
@@ -30,12 +31,6 @@ _DIGEST = re.compile(r"^[0-9a-f]{64}$")
 _STREAMING_OPERATIONS = {
     Operation.SEND_STREAMING_MESSAGE,
     Operation.SUBSCRIBE_TO_TASK,
-}
-_TERMINAL_STATES = {
-    protocol.TaskState.TASK_STATE_COMPLETED,
-    protocol.TaskState.TASK_STATE_FAILED,
-    protocol.TaskState.TASK_STATE_CANCELED,
-    protocol.TaskState.TASK_STATE_REJECTED,
 }
 _FRAME_FIELDS = frozenset(
     {
@@ -345,7 +340,7 @@ class StreamSessionOpenedV1:
             raise BindingValidationError("initialFrame must contain an official Task snapshot")
         if response.task.id != self.task_id:
             raise BindingValidationError("initialFrame Task ID mismatch")
-        terminal = response.task.status.state in _TERMINAL_STATES
+        terminal = is_terminal_task_state(response.task.status.state)
         if frame.final != terminal:
             raise BindingValidationError("initialFrame final does not match Task terminal state")
 
@@ -404,7 +399,7 @@ def _live_event_identity(frame: StreamSessionFrameV1) -> tuple[str, bool]:
     payload_kind = response.WhichOneof("payload")
     if payload_kind == "status_update":
         event = response.status_update
-        return event.task_id, event.status.state in _TERMINAL_STATES
+        return event.task_id, is_terminal_task_state(event.status.state)
     if payload_kind == "artifact_update":
         return response.artifact_update.task_id, False
     raise BindingValidationError(

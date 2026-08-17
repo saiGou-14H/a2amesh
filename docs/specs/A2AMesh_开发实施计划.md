@@ -429,7 +429,18 @@ tests/unit/protocol/
 - 本模块不实现 Redis State、Task 状态机、11 操作业务语义或真实 NATS/JetStream 故障验收；因此不满足 C1 整体退出门禁，也不代表完整 A2A v1 兼容或生产就绪；
 - C1-1 checkpoint 和独立只读复审完成前，状态保持 `candidate/pending-review`，不得写 `[verified]`。
 
-### 8.5 退出门禁（C1 整体）
+### 8.5 C1-2 当前模块：官方 TaskState 纯状态合同
+
+截至 2026-08-17 11:54（Asia/Shanghai），C1-2 已形成独立可回滚实现候选：
+
+- `protocol/state_machine.py` 只依赖官方 `TaskState`，定义不可变的官方迁移表、四类终态集合、终态保护和 fail-closed 非法/`UNSPECIFIED` 校验；
+- 迁移表严格对应 §6.2：`SUBMITTED`、`WORKING`、`INPUT_REQUIRED`、`AUTH_REQUIRED` 的合法去向，终态无后继；不允许隐式 self-transition；
+- `protocol/__init__.py` 暴露同一 contract facade；NATS stream 删除重复 `_TERMINAL_STATES`，统一调用该唯一实现；
+- RED→GREEN证据：状态机专项 `37 passed`；fresh interpreter `import a2amesh.protocol` 通过；Ruff、compileall、diff-check 通过；
+- 本模块不实现 version/lease/fencing、Redis CAS、outbox、Task/Context持久化或真实State并发；这些属于C2，不能由本模块宣称已完成；
+- C1-2 在独立复审和提交后全量门禁完成前保持 `candidate/pending-review`，不得写 `[verified]`。
+
+### 8.6 退出门禁（C1 整体）
 
 - 11 方法接口存在且有 contract test；
 - 官方 SDK 可解析所有输入/输出；
