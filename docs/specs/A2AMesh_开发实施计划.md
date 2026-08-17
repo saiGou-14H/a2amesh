@@ -429,6 +429,15 @@ tests/unit/protocol/
 - 本模块不实现 Redis State、Task 状态机、11 操作业务语义或真实 NATS/JetStream 故障验收；因此不满足 C1 整体退出门禁，也不代表完整 A2A v1 兼容或生产就绪；
 - C1-1 checkpoint 和独立只读复审完成前，状态保持 `candidate/pending-review`，不得写 `[verified]`。
 
+截至 2026-08-17 12:14（Asia/Shanghai），独立复审发现并已在独立 remediation 工作树修复以下可信边界问题，等待复审该修复树：
+
+- 原 P1：`SignerPolicy` 仅允许 signer 声称 principal，NATS verifier 曾从 envelope 的 `credentialId` 构造 `Principal`；现要求每个 `principal_id` 都有服务端不可变 `principal_bindings`，并由 NATS/legacy verifier 比较 credential、返回 bound `Principal`，alias generation 不再来自 NATS envelope；
+- 原 P2：官方 A2A 错误消息可能超过 binding response 限制并被吞掉；现使用闭合官方错误类型集合、512 字符可打印消息上限和 `InternalError` fallback，4097 字符回归仍返回结构化错误；
+- 原 P2：`CanonicalRequestContext` 的 `config_generation=True` 曾因 Python `bool` 是 `int` 被接受；现使用严格 `type(value) is int`，response envelope 同步收紧；
+- 新增负例覆盖：错误 credential、错误 alias generation、服务端 alias provenance、长官方错误和 boolean generation；当前修复树全量测试 `397 passed, 8 skipped`，Ruff、compileall、diff-check 已通过；
+- 本修复只关闭 C1-1 复审发现，不实现 Redis State、Task 状态机、11 操作业务语义或真实 NATS/JetStream 故障验收；因此不满足 C1 整体退出门禁，也不代表完整 A2A v1 兼容或生产就绪；
+- remediation 独立复审和提交前，状态保持 `candidate/pending-review`，不得写 `[verified]`。
+
 ### 8.5 C1-2 当前模块：官方 TaskState 纯状态合同
 
 截至 2026-08-17 11:54（Asia/Shanghai），C1-2 已形成独立可回滚实现候选：

@@ -68,7 +68,9 @@ class BindingResponseEnvelope:
     def __post_init__(self) -> None:
         if not _SAFE_TOKEN.fullmatch(self.request_id):
             raise BindingValidationError("requestId is not a safe token")
-        if not 1 <= self.config_generation <= 9_007_199_254_740_991:
+        if type(self.config_generation) is not int or not (
+            1 <= self.config_generation <= 9_007_199_254_740_991
+        ):
             raise BindingValidationError("configGeneration is outside JSON safe integer range")
         if (self.payload is None) == (self.error is None):
             raise BindingValidationError("response must contain exactly one of payload or error")

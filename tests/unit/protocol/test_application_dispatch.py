@@ -87,6 +87,16 @@ def test_canonical_context_rejects_invalid_ingress_facts(
         CanonicalRequestContext(**values)
 
 
+def test_canonical_context_rejects_boolean_config_generation() -> None:
+    with pytest.raises(ValueError, match="config_generation"):
+        CanonicalRequestContext(
+            request_id="request_001",
+            principal=Principal("agent:caller", "agent"),
+            target_agent_id="worker-a",
+            config_generation=True,
+        )
+
+
 @pytest.mark.asyncio
 async def test_get_task_dispatch_uses_official_request_response_and_trusted_context() -> None:
     application = GetTaskApplication()

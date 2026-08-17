@@ -18,7 +18,7 @@ from a2amesh.bindings.nats_v1 import (
     V1NatsClient,
     V1NatsServer,
 )
-from a2amesh.identity import SignerPolicy, nkey_public_key
+from a2amesh.identity import Principal, SignerPolicy, nkey_public_key
 
 NATS_URL = os.getenv("A2AMESH_TEST_NATS_URL")
 
@@ -81,6 +81,11 @@ async def run_dual_identity_smoke(nats_url: str) -> dict[str, object]:
             principal_ids=frozenset({f"agent:{name}"}),
             methods=frozenset({"nats-nkey"}),
             subjects=frozenset({name}),
+            principal_bindings={
+                f"agent:{name}": Principal(
+                    f"agent:{name}", "agent", f"{name}-key", 0
+                )
+            },
         )
         for name in pairs
     }

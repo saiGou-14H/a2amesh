@@ -69,8 +69,23 @@ def policy_for(signer: str, **overrides: Any) -> SignerPolicy:
         "principal_ids": frozenset({"a2a:cli-buildbot"}),
         "methods": frozenset({"a2a-bearer"}),
         "subjects": frozenset({"cli-buildbot"}),
+        "principal_bindings": {
+            "a2a:cli-buildbot": Principal(
+                "a2a:cli-buildbot", "a2a", "cli-buildbot", 0
+            )
+        },
     }
     values.update(overrides)
+    if "principal_bindings" not in overrides:
+        values["principal_bindings"] = {
+            principal_id: Principal(
+                principal_id,
+                principal_id.split(":", 1)[0],
+                "cli-buildbot",
+                0,
+            )
+            for principal_id in values["principal_ids"]
+        }
     return SignerPolicy(**values)
 
 
@@ -104,6 +119,52 @@ async def test_signed_envelope_verifies_and_claims_replay_after_signature() -> N
     assert identity.credential_id == "cli-buildbot"
     assert identity.signer == signer
     assert guard.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_signed_envelope_credential_claim_must_match_server_binding() -> None:
+    key_pair = make_user_key_pair()
+    signer = nkey_public_key(key_pair)
+    signed = sign_request_envelope(unsigned_fixture(), key_pair)
+    guard = MemoryReplayGuard()
+    verifier = BindingAuthVerifier(
+        {
+            signer: policy_for(
+                signer,
+                principal_bindings={
+                    "a2a:cli-buildbot": Principal(
+                        "a2a:cli-buildbot", "a2a", "credential-from-state", 7
+                    )
+                },
+            )
+        },
+        guard,
+    )
+
+    with pytest.raises(BindingValidationError, match="credential binding"):
+        await verifier.verify(signed, **verify_kwargs(signer))
+    assert guard.calls == 0
+
+
+@pytest.mark.asyncio
+async def test_verified_nats_identity_uses_server_bound_alias_generation() -> None:
+    key_pair = make_user_key_pair()
+    signer = nkey_public_key(key_pair)
+    signed = sign_request_envelope(unsigned_fixture(), key_pair)
+    bound = Principal("a2a:cli-buildbot", "a2a", "cli-buildbot", 7)
+    verifier = BindingAuthVerifier(
+        {
+            signer: policy_for(
+                signer,
+                principal_bindings={bound.id: bound},
+            )
+        },
+        MemoryReplayGuard(),
+    )
+
+    identity = await verifier.verify(signed, **verify_kwargs(signer))
+
+    assert identity.principal == bound
 
 
 @pytest.mark.asyncio

@@ -210,6 +210,11 @@ class BindingAuthVerifier:
             raise BindingValidationError("AuthProof signer does not match NATS connection")
         if context.principal_id not in policy.principal_ids:
             raise BindingValidationError("signer cannot represent this principal")
+        bound_principal = policy.principal_bindings.get(context.principal_id)
+        if bound_principal is None:
+            raise BindingValidationError("signer has no principal binding")
+        if context.credential_id != bound_principal.credential_id:
+            raise BindingValidationError("credential binding does not match signer policy")
         if context.method not in policy.methods:
             raise BindingValidationError("signer cannot use this authentication method")
         if context.subject not in policy.subjects:
@@ -261,11 +266,7 @@ class BindingAuthVerifier:
             raise BindingValidationError("binding request replay detected")
 
         return VerifiedBindingIdentity(
-            principal=Principal(
-                context.principal_id,
-                context.principal_id.split(":", 1)[0],
-                credential_id=context.credential_id,
-            ),
+            principal=bound_principal,
             signer=proof.signer,
             request_id=envelope.request_id,
         )

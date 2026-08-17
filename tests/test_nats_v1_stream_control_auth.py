@@ -21,7 +21,7 @@ from a2amesh.bindings.nats_v1 import (
     StreamOpenDigestContextV1,
     sign_stream_control_envelope,
 )
-from a2amesh.identity import SignerPolicy, nkey_public_key
+from a2amesh.identity import Principal, SignerPolicy, nkey_public_key
 
 FIXTURES = Path(__file__).parent / "fixtures" / "a2a_v1"
 FILES = {
@@ -71,8 +71,23 @@ def policy(**overrides: Any) -> SignerPolicy:
         "principal_ids": frozenset({"a2a:cli-buildbot"}),
         "methods": frozenset({"a2a-bearer"}),
         "subjects": frozenset({"cli-buildbot"}),
+        "principal_bindings": {
+            "a2a:cli-buildbot": Principal(
+                "a2a:cli-buildbot", "a2a", "cli-buildbot", 0
+            )
+        },
     }
     values.update(overrides)
+    if "principal_bindings" not in overrides:
+        values["principal_bindings"] = {
+            principal_id: Principal(
+                principal_id,
+                principal_id.split(":", 1)[0],
+                "cli-buildbot",
+                0,
+            )
+            for principal_id in values["principal_ids"]
+        }
     return SignerPolicy(**values)
 
 

@@ -5,7 +5,8 @@ from __future__ import annotations
 import json
 import time
 from collections.abc import Mapping
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
+from types import MappingProxyType
 
 import nkeys
 
@@ -73,11 +74,23 @@ class AuthProof:
 
 @dataclass(frozen=True, slots=True)
 class SignerPolicy:
-    """Exact identities and claims one NKey signer may represent."""
+    """Exact claims and server-side Principal provenance one signer may represent."""
 
     principal_ids: frozenset[str]
     methods: frozenset[str]
     subjects: frozenset[str]
+    principal_bindings: Mapping[str, Principal] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        bindings = dict(self.principal_bindings)
+        if not self.principal_ids or set(bindings) != set(self.principal_ids):
+            raise ValueError(
+                "signer policy requires a complete principal binding for every principal_id"
+            )
+        for principal_id, principal in bindings.items():
+            if not isinstance(principal, Principal) or principal.id != principal_id:
+                raise ValueError("signer policy principal binding does not match its key")
+        object.__setattr__(self, "principal_bindings", MappingProxyType(bindings))
 
 
 def sign_auth_context(context: AuthContext, key_pair: nkeys.KeyPair) -> AuthProof:
@@ -118,6 +131,13 @@ class AuthContextVerifier:
             raise ValueError("untrusted AuthContext signer")
         if context.principal_id not in policy.principal_ids:
             raise ValueError("signer cannot represent this principal")
+        bound_principal = policy.principal_bindings.get(context.principal_id)
+        if bound_principal is None:
+            raise ValueError("signer has no principal binding")
+        if context.credential_id != bound_principal.credential_id:
+            raise ValueError("credential binding does not match signer policy")
+        if context.alias_generation != bound_principal.alias_generation:
+            raise ValueError("alias generation binding does not match signer policy")
         if context.method not in policy.methods:
             raise ValueError("signer cannot use this authentication method")
         if context.subject not in policy.subjects:
@@ -141,10 +161,4 @@ class AuthContextVerifier:
         except ValueError as exc:
             raise ValueError("invalid AuthContext signature") from exc
         self._seen[context.request_id] = context.expires_at
-        kind = context.principal_id.split(":", 1)[0]
-        return Principal(
-            context.principal_id,
-            kind,
-            context.credential_id,
-            context.alias_generation,
-        )
+        return bound_principal

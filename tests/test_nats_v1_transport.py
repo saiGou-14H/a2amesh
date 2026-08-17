@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 import nacl.signing
 import nkeys
 import pytest
+from a2a.utils.errors import InvalidParamsError
 
 from a2amesh import protocol
 from a2amesh.bindings.nats_v1 import (
@@ -18,7 +19,7 @@ from a2amesh.bindings.nats_v1 import (
     V1NatsServer,
 )
 from a2amesh.core import Operation
-from a2amesh.identity import SignerPolicy, nkey_public_key
+from a2amesh.identity import Principal, SignerPolicy, nkey_public_key
 
 NOW = datetime(2026, 8, 16, 6, 30, tzinfo=UTC)
 
@@ -195,6 +196,11 @@ def make_server(
                 principal_ids=frozenset({"agent:caller-a"}),
                 methods=frozenset({"nats-nkey"}),
                 subjects=frozenset({"caller-a"}),
+                principal_bindings={
+                    "agent:caller-a": Principal(
+                        "agent:caller-a", "agent", "caller-a-key", 0
+                    )
+                },
             )
         },
         replay_guard=guard or ReplayGuard(),
@@ -243,6 +249,33 @@ class WrongResponseCanonicalApp(CanonicalApp):
     async def send_message(self, request, context):
         del request, context
         return protocol.Task(id="wrong-response")
+
+
+class LongErrorCanonicalApp(CanonicalApp):
+    async def send_message(self, request, context):
+        del request, context
+        raise InvalidParamsError(message="x" * 4097)
+
+
+@pytest.mark.asyncio
+async def test_server_bounds_long_official_error_and_still_replies_structured() -> None:
+    broker = FakeBroker()
+    pair = key_pair()
+    server, _ = make_server(broker, pair, LongErrorCanonicalApp())
+    await server.start()
+    client = make_client(FakeConnection(broker, "caller-a"), pair)
+
+    with pytest.raises(BindingRemoteError) as captured:
+        await client.request(
+            Operation.SEND_MESSAGE,
+            protocol.SendMessageRequest(),
+            target_agent_id="worker",
+            timeout=1,
+        )
+
+    assert captured.value.error.type == "InvalidParamsError"
+    assert len(captured.value.error.message) <= 4096
+    await server.close()
 
 
 @pytest.mark.asyncio

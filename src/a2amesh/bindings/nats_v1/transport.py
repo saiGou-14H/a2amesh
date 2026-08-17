@@ -20,6 +20,7 @@ import nkeys
 from a2amesh.core import OPERATION_SPECS, Operation, dispatch_unary
 from a2amesh.core.application import CanonicalApplication, CanonicalRequestContext
 from a2amesh.identity import SignerPolicy, nkey_public_key
+from a2amesh.protocol import errors as protocol_errors
 from a2amesh.protocol.errors import A2AError
 
 from .auth import (
@@ -38,6 +39,18 @@ from .response import BindingError, BindingResponseEnvelope
 _AGENT_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
 _REPLY_PREFIX = re.compile(r"^_INBOX\.a2amesh\.[A-Za-z0-9_-]+\.$")
 RPC_SUBJECT_PREFIX = "a2a.v1.rpc."
+_A2A_ERROR_CLASSES = tuple(
+    getattr(protocol_errors, name)
+    for name in protocol_errors.__all__
+    if name != "A2AError"
+)
+_BINDING_ERROR_TYPES = frozenset(
+    {
+        "InvalidBindingRequest",
+        "BindingTransportError",
+        "InternalError",
+    }
+)
 
 
 class BindingTransportError(RuntimeError):
@@ -116,6 +129,37 @@ class NatsRequestConnection(Protocol):
     async def publish(self, subject: str, payload: bytes, *, reply: str | None = None) -> None: ...
 
     async def flush(self) -> None: ...
+
+
+def _safe_a2a_error_fields(error: A2AError) -> tuple[str, str]:
+    """Map official errors to a closed type set and a bounded safe message."""
+    error_type = next(
+        (candidate.__name__ for candidate in _A2A_ERROR_CLASSES if isinstance(error, candidate)),
+        "A2AError",
+    )
+    message = str(error)
+    if not message or len(message) > 512 or not all(char.isprintable() for char in message):
+        message = "canonical application error"
+    return error_type, message
+
+
+def _safe_binding_error_fields(error_type: str, error_message: str) -> tuple[str, str]:
+    if error_type not in _BINDING_ERROR_TYPES and error_type not in {
+        candidate.__name__ for candidate in _A2A_ERROR_CLASSES
+    }:
+        error_type = "InternalError"
+    if (
+        not isinstance(error_message, str)
+        or not error_message
+        or len(error_message) > 512
+        or not all(char.isprintable() for char in error_message)
+    ):
+        error_message = (
+            "canonical application error"
+            if error_type not in _BINDING_ERROR_TYPES
+            else "binding request failed"
+        )
+    return error_type, error_message
 
 
 class V1NatsClient:
@@ -377,11 +421,12 @@ class V1NatsServer:
                 retryable=False,
             )
         except A2AError as exc:
+            error_type, error_message = _safe_a2a_error_fields(exc)
             await self._respond_error(
                 message,
                 envelope,
-                type(exc).__name__,
-                str(exc),
+                error_type,
+                error_message,
                 retryable=False,
             )
         except Exception:
@@ -404,6 +449,7 @@ class V1NatsServer:
     ) -> None:
         if envelope is None or message.reply != envelope.reply_subject:
             return
+        error_type, error_message = _safe_binding_error_fields(error_type, error_message)
         try:
             response = BindingResponseEnvelope(
                 operation=envelope.operation,
@@ -413,7 +459,20 @@ class V1NatsServer:
             )
             await message.respond(response.to_json_bytes())
         except Exception:
-            return
+            try:
+                response = BindingResponseEnvelope(
+                    operation=envelope.operation,
+                    request_id=envelope.request_id,
+                    config_generation=self.active_config_generation,
+                    error=BindingError(
+                        "InternalError",
+                        "canonical application dispatch failed",
+                        True,
+                    ),
+                )
+                await message.respond(response.to_json_bytes())
+            except Exception:
+                return
 
     async def close(self) -> None:
         tasks = list(self._tasks)
