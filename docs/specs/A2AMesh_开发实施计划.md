@@ -449,10 +449,10 @@ tests/unit/protocol/
 - 第二代复审确认的P1：Future `cancel()`、`close`属性/调用、async `close()`返回值和`wrapped`字段清理不total；awaitable抛`RuntimeError`时未清理；`__aiter__`建立阶段抛错时原stream未`aclose`；完整suite出现`1 failed`，不能作为green checkpoint；
 - 第三代把拒绝awaitable cleanup改为异步fail-safe流程：隔离cancel/getattr/close异常、等待async close结果、遍历明确wrapped字段，并在`TypeError`映射或其它异常原样重抛前完成清理；streaming显式建立iterator，建立失败时关闭原stream，逐项`__anext__`并在所有终止路径`aclose`；
 - 第三代追加探针实测`iterator_closed=True`但`next_awaitable_closed=False`且内层coroutine frame仍存在；第四代显式保存每次`__anext__()`返回值，验证其awaitable合同，并在StopAsyncIteration、TypeError映射和其它异常原样重抛前清理该返回值及其wrapped资源；
-- 第五代补齐不同owner与returned iterator的双重关闭、missing/invalid `__aiter__`的固定映射；cleanup对Future cancel失败使用base fallback，对异步close使用独立future和50ms有界等待，close返回的custom awaitable继续进入同一资源图并以64节点封顶；父任务取消不被吞掉，次级异常不覆盖主异常；
+- 第五代补齐不同owner与returned iterator的双重关闭、missing/invalid `__aiter__`的固定映射；cleanup对Future cancel失败使用base fallback，对异步close使用独立future和50ms有界等待，close/`aclose`返回的custom awaitable继续进入同一资源图并以64节点封顶；父任务取消不被吞掉，次级异常不覆盖主异常；
 - `validate_application_contract` 使用`get_type_hints/get_origin/get_args`结构化解析`Annotated`、Union、Awaitable/Coroutine及AsyncIterator/Iterable/Generator，递归支持`functools.partial`与callable object，并以真实async/asyncgen函数种类优先，拒绝unary async-generator和streaming coroutine伪annotation；
 - 相邻活动NATS `BindingAuthVerifier`在policy/signature/replay前对expected/active/envelope generation执行exact safe-int；`BindingError`及wire schema拒绝控制字符，`BindingRemoteError`对旧/伪造error对象执行固定二级fallback；
-- 新增独立硬编码11-operation registry matrix，及伪造protobuf、malformed awaitable/iterator/`__anext__`/custom-close返回值、distinct owner、bounded cleanup、aiter建立、校验顺序、bool generation、错误控制字符、validator误判/误拒和NATS边界负例；当前第五代Core focused `61 passed`、NATS/response专项 `73 passed`、全量 `443 passed, 8 skipped`、8/8机器门禁与Ruff通过；
+- 新增独立硬编码11-operation registry matrix，及伪造protobuf、malformed awaitable/iterator/`__anext__`/custom-close/`aclose`返回值、distinct owner、bounded cleanup、aiter建立、校验顺序、bool generation、错误控制字符、validator误判/误拒和NATS边界负例；当前第五代Core focused `62 passed`、NATS/response专项 `73 passed`、全量 `444 passed, 8 skipped`、8/8机器门禁与Ruff通过；
 - 本模块只针对transport-independent dispatch contract，不实现业务Task持久化、capability实现、version/lease/fencing、Redis CAS、真实stream broker或完整A2A生产互操作；不能宣称C1整体完成或生产就绪；
 - 第五代checkpoint、独立复审和提交后完整门禁完成前保持 `candidate/pending-review`，不得写 `[verified]`。
 

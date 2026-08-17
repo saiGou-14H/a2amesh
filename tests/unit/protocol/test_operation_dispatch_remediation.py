@@ -203,6 +203,33 @@ class DistinctOwner:
         self.closed = True
 
 
+class CustomAcloseResult:
+    def __init__(self) -> None:
+        self.closed = False
+        self.inner = asyncio.sleep(3600)
+
+    def __await__(self):
+        raise RuntimeError("custom aclose result malformed")
+
+    def close(self) -> None:
+        self.closed = True
+
+
+class CustomAcloseIterator:
+    def __init__(self) -> None:
+        self.result: CustomAcloseResult | None = None
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        raise RuntimeError("primary iterator failure")
+
+    def aclose(self) -> CustomAcloseResult:
+        self.result = CustomAcloseResult()
+        return self.result
+
+
 class UnaryCallable:
     async def __call__(self, request, request_context):
         del request, request_context
@@ -469,6 +496,29 @@ def test_validator_handles_partial_callable_and_rejects_impossible_modalities() 
     application.send_streaming_message = coroutine_handler
     with pytest.raises(InvalidAgentResponseError, match="modality"):
         validate_application_contract(application)
+
+
+@pytest.mark.asyncio
+async def test_custom_aclose_result_and_wrapped_coroutine_are_closed() -> None:
+    value = CustomAcloseIterator()
+
+    class Application:
+        def send_streaming_message(self, request, request_context):
+            del request, request_context
+            return value
+
+    with pytest.raises(RuntimeError, match="primary iterator failure"):
+        await anext(
+            dispatch_streaming(
+                Application(),
+                Operation.SEND_STREAMING_MESSAGE,
+                protocol.SendMessageRequest(),
+                context(),
+            )
+        )
+    assert value.result is not None
+    assert value.result.closed is True
+    assert value.result.inner.cr_frame is None
 
 
 def _valid_application() -> object:

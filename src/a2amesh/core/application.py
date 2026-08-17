@@ -457,6 +457,8 @@ async def _close_async_iterator(iterator: object) -> None:
     except BaseException:
         return
     await _await_cleanup(result)
+    if _safe_is_awaitable(result):
+        await _close_awaitable(result)
 
 
 async def _close_stream_resources(iterator: object | None, stream: object) -> None:
