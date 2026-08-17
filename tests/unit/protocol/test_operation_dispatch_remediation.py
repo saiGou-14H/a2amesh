@@ -17,6 +17,7 @@ from a2amesh import protocol
 from a2amesh.bindings.nats_v1.envelope import BindingRequestEnvelope, BindingValidationError
 from a2amesh.bindings.nats_v1.response import BindingError, BindingResponseEnvelope
 from a2amesh.bindings.nats_v1.transport import (
+    BindingRemoteError,
     _safe_a2a_error_fields,
     _safe_binding_error_fields,
 )
@@ -114,6 +115,80 @@ class BadNextIterator:
 
     async def aclose(self) -> None:
         self.closed = True
+
+
+class MissingAiter:
+    def __init__(self) -> None:
+        self.closed = False
+
+    async def aclose(self) -> None:
+        self.closed = True
+
+
+class FalseCancelFuture(asyncio.Future[object]):
+    def cancel(self, msg: object = None) -> bool:
+        del msg
+        return False
+
+    def __await__(self):
+        raise TypeError("malformed pending future")
+
+
+class BlockingClose:
+    def __init__(self) -> None:
+        self.started = False
+
+    def __await__(self):
+        raise TypeError("malformed blocking close")
+
+    def close(self):
+        async def wait_forever() -> None:
+            self.started = True
+            await asyncio.Event().wait()
+
+        return wait_forever()
+
+
+class DistinctIterator:
+    def __init__(self) -> None:
+        self.closed = False
+        self.done = False
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        if self.done:
+            raise StopAsyncIteration
+        self.done = True
+        return protocol.StreamResponse()
+
+    async def aclose(self) -> None:
+        self.closed = True
+
+
+class DistinctOwner:
+    def __init__(self) -> None:
+        self.iterator = DistinctIterator()
+        self.closed = False
+
+    def __aiter__(self):
+        return self.iterator
+
+    async def aclose(self) -> None:
+        self.closed = True
+
+
+class UnaryCallable:
+    async def __call__(self, request, request_context):
+        del request, request_context
+        return protocol.Task()
+
+
+class StreamingCallable:
+    async def __call__(self, request, request_context):
+        del request, request_context
+        yield protocol.StreamResponse()
 
 
 @pytest.mark.asyncio
@@ -233,6 +308,124 @@ async def test_malformed_anext_awaitable_is_closed_with_its_wrapped_coroutine(
     assert value.returned.inner.cr_frame is None
 
 
+@pytest.mark.asyncio
+async def test_missing_aiter_is_mapped_and_owner_is_closed() -> None:
+    value = MissingAiter()
+
+    class Application:
+        def send_streaming_message(self, request, request_context):
+            del request, request_context
+            return value
+
+    with pytest.raises(InvalidAgentResponseError):
+        await anext(
+            dispatch_streaming(
+                Application(),
+                Operation.SEND_STREAMING_MESSAGE,
+                protocol.SendMessageRequest(),
+                context(),
+            )
+        )
+    assert value.closed is True
+
+
+@pytest.mark.asyncio
+async def test_distinct_stream_owner_and_iterator_are_both_closed() -> None:
+    value = DistinctOwner()
+
+    class Application:
+        def send_streaming_message(self, request, request_context):
+            del request, request_context
+            return value
+
+    stream = dispatch_streaming(
+        Application(),
+        Operation.SEND_STREAMING_MESSAGE,
+        protocol.SendMessageRequest(),
+        context(),
+    )
+    assert [item async for item in stream] == [protocol.StreamResponse()]
+    assert value.iterator.closed is True
+    assert value.closed is True
+
+
+@pytest.mark.asyncio
+async def test_cancel_false_does_not_leave_rejected_future_pending() -> None:
+    value = FalseCancelFuture()
+
+    class Application:
+        def get_task(self, request, request_context):
+            del request, request_context
+            return value
+
+    try:
+        with pytest.raises(InvalidAgentResponseError):
+            await dispatch_unary(
+                Application(), Operation.GET_TASK, protocol.GetTaskRequest(id="task"), context()
+            )
+        assert value.done() is True
+    finally:
+        if not value.done():
+            asyncio.Future.cancel(value)
+
+
+@pytest.mark.asyncio
+async def test_blocking_cleanup_is_bounded_and_external_timeout_is_preserved() -> None:
+    value = BlockingClose()
+
+    class Application:
+        def get_task(self, request, request_context):
+            del request, request_context
+            return value
+
+    with pytest.raises(InvalidAgentResponseError):
+        await asyncio.wait_for(
+            dispatch_unary(
+                Application(), Operation.GET_TASK, protocol.GetTaskRequest(id="task"), context()
+            ),
+            timeout=0.25,
+        )
+    assert value.started is True
+
+    value = BlockingClose()
+    task = asyncio.create_task(
+        dispatch_unary(
+            Application(), Operation.GET_TASK, protocol.GetTaskRequest(id="task"), context()
+        )
+    )
+    await asyncio.sleep(0)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+
+def test_validator_handles_partial_callable_and_rejects_impossible_modalities() -> None:
+    application = _valid_application()
+    application.get_task = functools.partial(UnaryCallable())
+    application.send_streaming_message = functools.partial(StreamingCallable())
+    validate_application_contract(application)
+
+    async def async_generator_handler(request, request_context):
+        del request, request_context
+        yield protocol.Task()
+
+    async def coroutine_handler(
+        request, request_context
+    ) -> Annotated[Awaitable[protocol.StreamResponse], "wrong"]:
+        del request, request_context
+        return protocol.StreamResponse()
+
+    application = _valid_application()
+    application.get_task = async_generator_handler
+    with pytest.raises(InvalidAgentResponseError, match="modality"):
+        validate_application_contract(application)
+
+    application = _valid_application()
+    application.send_streaming_message = coroutine_handler
+    with pytest.raises(InvalidAgentResponseError, match="modality"):
+        validate_application_contract(application)
+
+
 def _valid_application() -> object:
     application = type("Application", (), {})()
 
@@ -343,6 +536,34 @@ def test_active_response_boundary_rejects_bool_float_and_spoof_payload() -> None
 def test_binding_error_retryable_is_exact_bool() -> None:
     with pytest.raises(BindingValidationError, match="retryable"):
         BindingError("InternalError", "fixed", 1)  # type: ignore[arg-type]
+
+
+def test_binding_error_message_rejects_control_characters() -> None:
+    with pytest.raises(BindingValidationError, match="message"):
+        BindingError("InternalError", "safe-prefix\nFORGED-LOG\x00", False)
+
+    valid = BindingResponseEnvelope(
+        operation=Operation.GET_TASK,
+        request_id="response-001",
+        config_generation=1,
+        error=BindingError("InternalError", "safe", False),
+    ).to_dict()
+    valid["error"]["message"] = "safe-prefix\nFORGED-LOG\x00"
+    with pytest.raises(BindingValidationError, match="schema"):
+        BindingResponseEnvelope.from_json_bytes(
+            json.dumps(valid).encode(), Operation.GET_TASK
+        )
+
+
+def test_remote_error_sanitizes_a_forged_legacy_error_object() -> None:
+    forged = object.__new__(BindingError)
+    object.__setattr__(forged, "type", "InternalError")
+    object.__setattr__(forged, "message", "safe-prefix\nFORGED-LOG\x00")
+    object.__setattr__(forged, "retryable", False)
+    rendered = str(BindingRemoteError(forged))
+    assert "FORGED-LOG" not in rendered
+    assert "\\n" not in rendered
+    assert "\\x00" not in rendered
 
 
 def test_transport_error_mappers_never_stringify_or_hash_hostile_values() -> None:

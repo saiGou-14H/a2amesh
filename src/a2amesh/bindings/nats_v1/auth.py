@@ -30,6 +30,12 @@ from .envelope import (
 AUTH_ALGORITHM = "nkey-ed25519"
 RPC_SUBJECT_PREFIX = "a2a.v1.rpc."
 _REPLY_PREFIX = re.compile(r"^_INBOX\.a2amesh\.[A-Za-z0-9_-]+\.$")
+_MAX_JSON_SAFE_INTEGER = 9_007_199_254_740_991
+
+
+def _validate_config_generation(value: object, field_name: str) -> None:
+    if type(value) is not int or not 1 <= value <= _MAX_JSON_SAFE_INTEGER:
+        raise BindingValidationError(f"{field_name} must be a positive JSON-safe integer")
 
 
 class SignedBindingEnvelope(Protocol):
@@ -167,6 +173,7 @@ class BindingAuthVerifier:
         active_config_generation: int,
         now: datetime | None = None,
     ) -> VerifiedBindingIdentity:
+        _validate_config_generation(active_config_generation, "active config generation")
         return await self.verify_subject(
             envelope,
             received_subject=received_subject,
@@ -194,6 +201,8 @@ class BindingAuthVerifier:
         expected_config_generation: int,
         now: datetime | None = None,
     ) -> VerifiedBindingIdentity:
+        _validate_config_generation(expected_config_generation, "expected config generation")
+        _validate_config_generation(envelope.config_generation, "envelope config generation")
         current = datetime.now(UTC) if now is None else now
         if current.tzinfo is None:
             raise BindingValidationError("verification clock must be timezone-aware")

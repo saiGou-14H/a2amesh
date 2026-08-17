@@ -200,8 +200,8 @@ def _validate_response(
 
 
 def _callable_target(handler: Callable[..., object]) -> object:
-    if isinstance(handler, functools.partial):
-        return handler
+    while isinstance(handler, functools.partial):
+        handler = cast(Callable[..., object], handler.func)
     if inspect.isroutine(handler):
         return handler
     try:
@@ -211,7 +211,7 @@ def _callable_target(handler: Callable[..., object]) -> object:
 
 
 def _return_annotation(handler: Callable[..., object]) -> object:
-    target = handler.func if isinstance(handler, functools.partial) else handler
+    target = _callable_target(handler)
     try:
         hints = get_type_hints(target, include_extras=True)
         if "return" in hints:
@@ -257,6 +257,8 @@ def _supports_unary_handler(handler: Callable[..., object]) -> bool:
     if not _supports_call_shape(handler):
         return False
     target = _callable_target(handler)
+    if inspect.isasyncgenfunction(target):
+        return False
     if inspect.iscoroutinefunction(target):
         return True
     return _annotation_has_origin_or_name(
@@ -270,6 +272,8 @@ def _supports_streaming_handler(handler: Callable[..., object]) -> bool:
     if not _supports_call_shape(handler):
         return False
     target = _callable_target(handler)
+    if inspect.iscoroutinefunction(target):
+        return False
     if inspect.isasyncgenfunction(target):
         return True
     return _annotation_has_origin_or_name(
@@ -306,8 +310,99 @@ def validate_application_contract(application: object) -> None:
         )
 
 
+_CLEANUP_TIMEOUT_SECONDS = 0.05
+
+
+def _safe_is_awaitable(value: object) -> bool:
+    try:
+        return inspect.isawaitable(value)
+    except BaseException:
+        return False
+
+
+def _future_done(value: asyncio.Future[object]) -> bool:
+    try:
+        return value.done()
+    except BaseException:
+        return True
+
+
+def _consume_future(value: asyncio.Future[object]) -> None:
+    try:
+        value.exception()
+    except BaseException as exc:
+        del exc
+
+
+def _detach_cleanup_future(value: asyncio.Future[object]) -> None:
+    try:
+        value.add_done_callback(_consume_future)
+    except BaseException as exc:
+        del exc
+
+
+def _request_future_cancel(value: asyncio.Future[object]) -> None:
+    try:
+        cancelled = value.cancel()
+    except BaseException:
+        cancelled = False
+    if _future_done(value):
+        _consume_future(value)
+        return
+    # A hostile Future subclass can reject/ignore cancel(); use the base
+    # descriptor for plain Future instances so malformed awaitables do not
+    # leave a pending object behind. Tasks are allowed to finish cooperatively.
+    if not isinstance(value, asyncio.Task) and not cancelled:
+        try:
+            asyncio.Future.cancel(value)
+        except BaseException as exc:
+            del exc
+    if _future_done(value):
+        _consume_future(value)
+
+
+async def _await_cleanup(value: object) -> None:
+    """Await cleanup work for a bounded time without swallowing parent cancellation."""
+    if not _safe_is_awaitable(value):
+        return
+    try:
+        future = (
+            value
+            if isinstance(value, asyncio.Future)
+            else asyncio.ensure_future(value)
+        )
+    except BaseException:
+        return
+    if future is asyncio.current_task():
+        return
+    if _future_done(future):
+        _consume_future(future)
+        return
+    try:
+        done, pending = await asyncio.wait(
+            (future,), timeout=_CLEANUP_TIMEOUT_SECONDS
+        )
+    except asyncio.CancelledError:
+        _request_future_cancel(future)
+        if not _future_done(future):
+            _detach_cleanup_future(future)
+        raise
+    except BaseException:
+        _request_future_cancel(future)
+        if not _future_done(future):
+            _detach_cleanup_future(future)
+        return
+    if pending:
+        _request_future_cancel(future)
+        if not _future_done(future):
+            _detach_cleanup_future(future)
+    else:
+        for completed in done:
+            _consume_future(completed)
+
+
 async def _close_awaitable(value: object) -> None:
-    """Best-effort async cleanup that never replaces the primary exception."""
+    """Best-effort bounded cleanup that never replaces a primary exception."""
     pending: list[object] = [value]
     seen: set[int] = set()
     wrapped_attributes = (
@@ -328,16 +423,9 @@ async def _close_awaitable(value: object) -> None:
             continue
         seen.add(id(candidate))
         if isinstance(candidate, asyncio.Future):
-            cancel_ok = True
-            try:
-                candidate.cancel()
-            except BaseException:
-                cancel_ok = False
-            if cancel_ok and candidate is not asyncio.current_task():
-                try:
-                    await candidate
-                except BaseException:
-                    cancel_ok = False
+            _request_future_cancel(candidate)
+            if not _future_done(candidate) and candidate is not asyncio.current_task():
+                await _await_cleanup(candidate)
         try:
             close = getattr(candidate, "close", None)
         except BaseException:
@@ -347,17 +435,13 @@ async def _close_awaitable(value: object) -> None:
                 closed = close()
             except BaseException:
                 closed = None
-            if inspect.isawaitable(closed):
-                try:
-                    await closed
-                except BaseException:
-                    pending.append(closed)
+            await _await_cleanup(closed)
         for attribute in wrapped_attributes:
             try:
                 nested = getattr(candidate, attribute, None)
             except BaseException:
                 nested = None
-            if nested is not None and inspect.isawaitable(nested):
+            if nested is not None and _safe_is_awaitable(nested):
                 pending.append(nested)
 
 
@@ -367,13 +451,20 @@ async def _close_async_iterator(iterator: object) -> None:
         if not callable(close):
             return
         result = close()
-        if inspect.isawaitable(result):
-            try:
-                await result
-            except BaseException:
-                await _close_awaitable(result)
     except BaseException:
         return
+    await _await_cleanup(result)
+
+
+async def _close_stream_resources(iterator: object | None, stream: object) -> None:
+    """Close the returned iterator and, when distinct, its owning stream."""
+    if iterator is None or iterator is stream:
+        await _close_async_iterator(stream if iterator is None else iterator)
+        return
+    try:
+        await _close_async_iterator(iterator)
+    finally:
+        await _close_async_iterator(stream)
 
 
 async def dispatch_unary(
@@ -429,31 +520,29 @@ async def dispatch_streaming(
         stream = handler(request, context)
     except TypeError as exc:
         raise _invalid_response(f"{operation.value} handler invocation is malformed") from exc
-    if inspect.isawaitable(stream):
+    if _safe_is_awaitable(stream):
         await _close_awaitable(stream)
         raise _invalid_response(f"{operation.value} handler must return an async iterator")
     iterator: object | None = None
     try:
         try:
-            iterator_factory = cast(AsyncIterable[object], stream).__aiter__
+            iterator_factory = stream.__aiter__  # type: ignore[attr-defined]
+            if not callable(iterator_factory):
+                raise TypeError("async stream __aiter__ is not callable")
             iterator = iterator_factory()
-            if inspect.isawaitable(iterator):
+            if _safe_is_awaitable(iterator):
                 await _close_awaitable(iterator)
                 raise TypeError("async iterator factory returned an awaitable")
             next_method = getattr(iterator, "__anext__", None)
             if not callable(next_method):
                 raise TypeError("async iterator has no __anext__")
-        except TypeError as exc:
-            await _close_async_iterator(iterator if iterator is not None else stream)
-            if iterator is not None and iterator is not stream:
-                await _close_async_iterator(stream)
+        except (AttributeError, TypeError) as exc:
+            await _close_stream_resources(iterator, stream)
             raise _invalid_response(
                 f"{operation.value} handler must return an async iterator"
             ) from exc
         except BaseException:
-            await _close_async_iterator(iterator if iterator is not None else stream)
-            if iterator is not None and iterator is not stream:
-                await _close_async_iterator(stream)
+            await _close_stream_resources(iterator, stream)
             raise
     except TypeError as exc:
         raise _invalid_response(f"{operation.value} handler must return an async iterator") from exc
@@ -462,7 +551,7 @@ async def dispatch_streaming(
             next_result: object | None = None
             try:
                 next_result = next_method()
-                if not inspect.isawaitable(next_result):
+                if not _safe_is_awaitable(next_result):
                     raise TypeError("async iterator __anext__ returned a non-awaitable")
                 item = await next_result
             except StopAsyncIteration:
@@ -481,4 +570,4 @@ async def dispatch_streaming(
                 raise
             yield _validate_response(operation, spec, item)
     finally:
-        await _close_async_iterator(iterator)
+        await _close_stream_resources(iterator, stream)
