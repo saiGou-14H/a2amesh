@@ -85,13 +85,13 @@ class StreamControlEnvelopeV1:
             ("callerInstanceId", self.caller_instance_id),
             ("streamOpenId", self.stream_open_id),
         ):
-            if not isinstance(value, str) or not _SAFE_TOKEN.fullmatch(value):
+            if type(value) is not str or not _SAFE_TOKEN.fullmatch(value):
                 raise BindingValidationError(f"{name} is not a safe token")
         for name, value in (
             ("callerAgentId", self.caller_agent_id),
             ("targetAgentId", self.target_agent_id),
         ):
-            if not isinstance(value, str) or not _AGENT_ID.fullmatch(value):
+            if type(value) is not str or not _AGENT_ID.fullmatch(value):
                 raise BindingValidationError(f"{name} is invalid")
         if (
             type(self.config_generation) is not int
@@ -116,9 +116,11 @@ class StreamControlEnvelopeV1:
             raise BindingValidationError("authContext must be AuthContext")
         if type(self.auth_proof) is not AuthProof:
             raise BindingValidationError("authProof must be AuthProof")
-        if not isinstance(self.sent_at, datetime) or self.sent_at.tzinfo is None:
+        if type(self.reply_subject) is not str:
+            raise BindingValidationError("replySubject must be a plain string")
+        if type(self.sent_at) is not datetime or self.sent_at.tzinfo is None:
             raise BindingValidationError("sentAt must be timezone-aware")
-        if not isinstance(self.deadline_at, datetime) or self.deadline_at.tzinfo is None:
+        if type(self.deadline_at) is not datetime or self.deadline_at.tzinfo is None:
             raise BindingValidationError("deadlineAt must be timezone-aware")
         if self.deadline_at <= self.sent_at:
             raise BindingValidationError("deadlineAt must be later than sentAt")

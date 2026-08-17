@@ -24,7 +24,13 @@ from a2amesh.bindings.nats_v1 import (
     sign_request_envelope,
     sign_stream_control_envelope,
 )
+from a2amesh.bindings.nats_v1.stream_control import (
+    StreamAckRequestV1,
+    StreamCloseRequestV1,
+    StreamOpenDigestContextV1,
+)
 from a2amesh.bindings.nats_v1.transport import (
+    V1NatsServer,
     _safe_a2a_error_fields,
     _safe_binding_error_fields,
 )
@@ -114,6 +120,19 @@ class MutableCredential:
 class ExplodingHashString(str):
     def __hash__(self) -> int:
         raise RuntimeError("hash explosion")
+
+
+class MutablePrefix(str):
+    accepted_prefix: str
+
+    def __new__(cls, value: str, accepted_prefix: str) -> MutablePrefix:
+        result = str.__new__(cls, value)
+        result.accepted_prefix = accepted_prefix
+        return result
+
+    def startswith(self, prefix: object, *args: object) -> bool:
+        del prefix, args
+        return self.accepted_prefix == "allowed"
 
 
 class UnknownDerived(InvalidParamsError):
@@ -293,6 +312,56 @@ def test_stream_control_rejects_legacy_auth_context_structurally() -> None:
     legacy = legacy_context("a2a-bearer")
     with pytest.raises(BindingValidationError, match="authContext"):
         replace(envelope, auth_context=legacy)
+
+
+def test_stream_envelope_rejects_mutable_reply_subject() -> None:
+    data = json.loads((FIXTURES / "nats_stream_control_ack_envelope.json").read_text())
+    envelope = StreamControlEnvelopeV1.from_dict(data)
+    with pytest.raises(BindingValidationError, match="replySubject"):
+        replace(
+            envelope,
+            reply_subject=MutablePrefix("_INBOX.a2amesh.attacker.bad", "allowed"),
+        )
+
+
+def test_stream_payloads_and_digest_context_reject_mutable_strings() -> None:
+    with pytest.raises(BindingValidationError, match="streamSessionId"):
+        StreamAckRequestV1(
+            stream_session_id=MutableClaim("session", "session"),
+            stream_open_id="open-1",
+            sequence=1,
+            event_seq=0,
+            payload_digest="0" * 64,
+        )
+    with pytest.raises(BindingValidationError, match="reason"):
+        StreamCloseRequestV1(
+            stream_session_id="session",
+            stream_open_id="open-1",
+            reason=MutableClaim("CLOSED", "CLOSED"),
+        )
+    with pytest.raises(BindingValidationError, match="callerScope"):
+        StreamOpenDigestContextV1(
+            caller_scope=MutableClaim("scope", "scope"),
+            response_core_principal_hash="0" * 64,
+            consumer_config_digest="1" * 64,
+        )
+
+
+def test_nats_server_auth_reference_cannot_be_replaced() -> None:
+    server = V1NatsServer(
+        None,  # type: ignore[arg-type]
+        agent_id="worker",
+        application=object(),
+        signer_policies={"signer": legacy_policy("signer")},
+        replay_guard=MemoryReplayGuard(),
+        identity_resolver=object(),
+        active_config_generation=1,
+    )
+    with pytest.raises(AttributeError):
+        server.auth = BindingAuthVerifier(  # type: ignore[assignment]
+            {"forged": legacy_policy("forged")},
+            MemoryReplayGuard(),
+        )
 
 
 def test_wire_auth_context_type_is_not_confused_with_legacy_context() -> None:

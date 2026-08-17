@@ -317,6 +317,21 @@ class V1NatsClient:
 class V1NatsServer:
     """NATS v1 server dispatching verified official requests to CanonicalApplication."""
 
+    _SEALED_CONFIG_FIELDS = frozenset(
+        {
+            "active_config_generation",
+            "_auth",
+            "_clock",
+            "_sealed",
+            "auth",
+        }
+    )
+
+    def __setattr__(self, name: str, value: object) -> None:
+        if getattr(self, "_sealed", False) and name in self._SEALED_CONFIG_FIELDS:
+            raise AttributeError("V1NatsServer security configuration is immutable")
+        object.__setattr__(self, name, value)
+
     def __init__(
         self,
         nc: NatsServerConnection,
@@ -345,10 +360,15 @@ class V1NatsServer:
         self.application = application
         self.identity_resolver = identity_resolver
         self.active_config_generation = active_config_generation
-        self.auth = BindingAuthVerifier(signer_policies, replay_guard)
+        self._auth = BindingAuthVerifier(signer_policies, replay_guard)
         self._clock = clock or (lambda: datetime.now(UTC))
         self._subscription: NatsSubscription | None = None
         self._tasks: set[asyncio.Task] = set()
+        self._sealed = True
+
+    @property
+    def auth(self) -> BindingAuthVerifier:
+        return self._auth
 
     @property
     def subject(self) -> str:

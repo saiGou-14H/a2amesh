@@ -77,7 +77,7 @@ class StreamOpenDigestContextV1:
     consumer_config_digest: str
 
     def __post_init__(self) -> None:
-        if not isinstance(self.caller_scope, str) or not _SAFE_TOKEN.fullmatch(
+        if type(self.caller_scope) is not str or not _SAFE_TOKEN.fullmatch(
             self.caller_scope
         ):
             raise BindingValidationError("callerScope is not a safe token")
@@ -85,7 +85,7 @@ class StreamOpenDigestContextV1:
             ("responseCorePrincipalHash", self.response_core_principal_hash),
             ("consumerConfigDigest", self.consumer_config_digest),
         ):
-            if not isinstance(value, str) or not _DIGEST.fullmatch(value):
+            if type(value) is not str or not _DIGEST.fullmatch(value):
                 raise BindingValidationError(f"{name} must be lowercase SHA-256 hex")
 
 
@@ -249,7 +249,7 @@ class StreamCloseRequestV1:
     def __post_init__(self) -> None:
         _validate_safe_token("streamSessionId", self.stream_session_id)
         _validate_safe_token("streamOpenId", self.stream_open_id)
-        if not isinstance(self.reason, str) or not _CLOSE_REASON.fullmatch(self.reason):
+        if type(self.reason) is not str or not _CLOSE_REASON.fullmatch(self.reason):
             raise BindingValidationError("stream close reason must be a bounded code")
         _validate("close", self.to_dict())
 
@@ -377,12 +377,12 @@ def _validate(schema_name: str, data: dict[str, Any]) -> None:
 
 
 def _validate_safe_token(name: str, value: object) -> None:
-    if not isinstance(value, str) or not _SAFE_TOKEN.fullmatch(value):
+    if type(value) is not str or not _SAFE_TOKEN.fullmatch(value):
         raise BindingValidationError(f"{name} is not a safe token")
 
 
 def _validate_digest(name: str, value: object) -> None:
-    if not isinstance(value, str) or not _DIGEST.fullmatch(value):
+    if type(value) is not str or not _DIGEST.fullmatch(value):
         raise BindingValidationError(f"{name} must be lowercase SHA-256 hex")
 
 
@@ -397,7 +397,7 @@ def _validate_positive_integer(name: str, value: object) -> None:
 
 
 def _validate_timestamp(name: str, value: object) -> None:
-    if not isinstance(value, datetime) or value.tzinfo is None:
+    if type(value) is not datetime or value.tzinfo is None:
         raise BindingValidationError(f"{name} must be timezone-aware")
 
 
