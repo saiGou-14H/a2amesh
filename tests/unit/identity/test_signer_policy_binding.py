@@ -50,6 +50,45 @@ def test_signer_policy_binding_keeps_credential_and_alias_provenance_server_side
     assert signer.startswith("U")
 
 
+def test_signer_policy_copies_mutable_claim_sets_before_authorization() -> None:
+    methods = {"nats-nkey"}
+    subjects = {"caller"}
+    bound = Principal("agent:caller", "agent", "credential-bound", 7)
+    policy = SignerPolicy(
+        principal_ids={bound.id},
+        methods=methods,
+        subjects=subjects,
+        principal_bindings={bound.id: bound},
+    )
+
+    methods.add("forged-method")
+    subjects.add("forged-subject")
+
+    assert policy.methods == frozenset({"nats-nkey"})
+    assert policy.subjects == frozenset({"caller"})
+    assert isinstance(policy.methods, frozenset)
+    assert isinstance(policy.subjects, frozenset)
+
+
+def test_principal_and_legacy_auth_context_reject_boolean_alias_generation() -> None:
+    with pytest.raises(ValueError, match="alias_generation"):
+        Principal("agent:caller", "agent", "credential-bound", True)
+
+    with pytest.raises(ValueError, match="alias_generation"):
+        AuthContext(
+            principal_id="agent:caller",
+            credential_id="credential-bound",
+            method="nats-nkey",
+            issuer="test",
+            subject="caller",
+            issued_at=100,
+            expires_at=200,
+            request_id="request-bool-alias",
+            target_agent_id="worker",
+            alias_generation=True,
+        )
+
+
 def test_auth_context_verifier_rejects_signed_but_unbound_credential_claim() -> None:
     pair = make_user_key_pair()
     signer = pair.public_key.decode("ascii")

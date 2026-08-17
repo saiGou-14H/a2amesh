@@ -102,8 +102,8 @@ class BindingRequestEnvelope:
             raise BindingValidationError("callerAgentId is invalid")
         if not _AGENT_ID.fullmatch(self.target_agent_id):
             raise BindingValidationError("targetAgentId is invalid")
-        if self.config_generation < 1:
-            raise BindingValidationError("configGeneration must be positive")
+        if type(self.config_generation) is not int or self.config_generation < 1:
+            raise BindingValidationError("configGeneration must be a positive integer")
         if self.operation in _STREAMING_OPERATIONS:
             if self.stream_open_id is None or not _SAFE_TOKEN.fullmatch(self.stream_open_id):
                 raise BindingValidationError("streamOpenId is required for streaming operations")

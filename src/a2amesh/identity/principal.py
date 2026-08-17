@@ -24,6 +24,8 @@ class Principal:
         prefix = self.id.split(":", 1)[0]
         if prefix != self.kind:
             raise ValueError("principal kind must match its ID prefix")
+        if type(self.alias_generation) is not int or self.alias_generation < 0:
+            raise ValueError("alias_generation must be a non-negative integer")
 
 
 def issuer_hash(issuer: str) -> str:

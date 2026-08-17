@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 import nacl.signing
 import nkeys
 import pytest
-from a2a.utils.errors import InvalidParamsError
+from a2a.utils.errors import A2AError, InvalidParamsError
 
 from a2amesh import protocol
 from a2amesh.bindings.nats_v1 import (
@@ -158,6 +158,7 @@ def make_client(
     connection: FakeConnection,
     pair: nkeys.KeyPair,
     caller: str = "caller-a",
+    config_generation: int = 42,
 ) -> V1NatsClient:
     return V1NatsClient(
         connection,
@@ -168,7 +169,7 @@ def make_client(
         caller_instance_id="instance-01",
         issuer="test-config",
         subject="caller-a",
-        config_generation=42,
+        config_generation=config_generation,
         clock=lambda: NOW,
     )
 
@@ -178,6 +179,7 @@ def make_server(
     pair: nkeys.KeyPair,
     app: CanonicalApp,
     guard: ReplayGuard | None = None,
+    active_config_generation: int = 42,
 ) -> tuple[V1NatsServer, StaticResolver]:
     signer = nkey_public_key(pair)
     identity = NatsCallerIdentity(
@@ -205,10 +207,19 @@ def make_server(
         },
         replay_guard=guard or ReplayGuard(),
         identity_resolver=resolver,
-        active_config_generation=42,
+        active_config_generation=active_config_generation,
         clock=lambda: NOW,
     )
     return server, resolver
+
+
+def test_client_and_server_reject_boolean_config_generation() -> None:
+    pair = key_pair()
+    with pytest.raises(ValueError, match="config generation"):
+        make_client(FakeConnection(FakeBroker(), "caller-a"), pair, config_generation=True)
+
+    with pytest.raises(ValueError, match="config generation"):
+        make_server(FakeBroker(), pair, CanonicalApp(), active_config_generation=True)
 
 
 @pytest.mark.asyncio
@@ -257,6 +268,17 @@ class LongErrorCanonicalApp(CanonicalApp):
         raise InvalidParamsError(message="x" * 4097)
 
 
+class ExplodingA2AError(A2AError):
+    def __str__(self) -> str:
+        raise RuntimeError("stringification failure")
+
+
+class ExplodingErrorCanonicalApp(CanonicalApp):
+    async def send_message(self, request, context):
+        del request, context
+        raise ExplodingA2AError(message="secret-exploding-error")
+
+
 @pytest.mark.asyncio
 async def test_server_bounds_long_official_error_and_still_replies_structured() -> None:
     broker = FakeBroker()
@@ -276,6 +298,30 @@ async def test_server_bounds_long_official_error_and_still_replies_structured() 
     assert captured.value.error.type == "InvalidParamsError"
     assert len(captured.value.error.message) <= 4096
     await server.close()
+
+
+@pytest.mark.asyncio
+async def test_server_always_replies_for_exploding_unknown_official_error() -> None:
+    broker = FakeBroker()
+    pair = key_pair()
+    server, _ = make_server(broker, pair, ExplodingErrorCanonicalApp())
+    await server.start()
+    client = make_client(FakeConnection(broker, "caller-a"), pair)
+
+    try:
+        with pytest.raises(BindingRemoteError) as captured:
+            await client.request(
+                Operation.SEND_MESSAGE,
+                protocol.SendMessageRequest(),
+                target_agent_id="worker",
+                timeout=1,
+            )
+        assert captured.value.error.type == "InternalError"
+        assert captured.value.error.message == "canonical application dispatch failed"
+        assert "stringification failure" not in str(captured.value)
+        assert "secret-exploding-error" not in str(captured.value)
+    finally:
+        await server.close()
 
 
 @pytest.mark.asyncio

@@ -429,14 +429,15 @@ tests/unit/protocol/
 - 本模块不实现 Redis State、Task 状态机、11 操作业务语义或真实 NATS/JetStream 故障验收；因此不满足 C1 整体退出门禁，也不代表完整 A2A v1 兼容或生产就绪；
 - C1-1 checkpoint 和独立只读复审完成前，状态保持 `candidate/pending-review`，不得写 `[verified]`。
 
-截至 2026-08-17 12:14（Asia/Shanghai），独立复审发现并已在独立 remediation 工作树修复以下可信边界问题，等待复审该修复树：
+截至 2026-08-17 12:44（Asia/Shanghai），第一轮 remediation `6baef3d` 的独立复审仍为 `BLOCKED`；第二代 remediation 正在独立工作树中形成，当前修复范围如下，尚未通过新的同树复审：
 
-- 原 P1：`SignerPolicy` 仅允许 signer 声称 principal，NATS verifier 曾从 envelope 的 `credentialId` 构造 `Principal`；现要求每个 `principal_id` 都有服务端不可变 `principal_bindings`，并由 NATS/legacy verifier 比较 credential、返回 bound `Principal`，alias generation 不再来自 NATS envelope；
-- 原 P2：官方 A2A 错误消息可能超过 binding response 限制并被吞掉；现使用闭合官方错误类型集合、512 字符可打印消息上限和 `InternalError` fallback，4097 字符回归仍返回结构化错误；
-- 原 P2：`CanonicalRequestContext` 的 `config_generation=True` 曾因 Python `bool` 是 `int` 被接受；现使用严格 `type(value) is int`，response envelope 同步收紧；
-- 新增负例覆盖：错误 credential、错误 alias generation、服务端 alias provenance、长官方错误和 boolean generation；当前修复树全量测试 `397 passed, 8 skipped`，Ruff、compileall、diff-check 已通过；
-- 本修复只关闭 C1-1 复审发现，不实现 Redis State、Task 状态机、11 操作业务语义或真实 NATS/JetStream 故障验收；因此不满足 C1 整体退出门禁，也不代表完整 A2A v1 兼容或生产就绪；
-- remediation 独立复审和提交前，状态保持 `candidate/pending-review`，不得写 `[verified]`。
+- 原 P1 provenance 主路径仍保持：`SignerPolicy` 要求完整服务端 `principal_bindings`，NATS/legacy verifier 比较 credential、返回 bound `Principal`，alias generation 不来自 NATS envelope；
+- 新增 P1 修复：`principal_ids/methods/subjects` 在 `SignerPolicy.__post_init__` 中复制为 `frozenset`，阻断构造后 mutable set 扩权，并校验其为字符串集合；
+- 新增 P2 错误闭合修复：未知 A2A 异常映射为固定 `InternalError`/通用消息；不再调用异常 `__str__`；BindingValidation/Transport 分支使用固定消息；safe mapper 对非字符串类型也 fail closed，确保爆炸字符串化仍发送结构化 fallback；
+- 新增 generation 边界修复：NATS client/server、动态 request envelope、legacy `Principal/AuthContext` 均使用严格 `type(value) is int`；stream-control、response、Core 原有 exact-int 约束保持；
+- 新增负例覆盖：mutable policy set、未知/爆炸 A2A error、非字符串错误类型、client/server/request/Principal/AuthContext boolean generation；当前第二代修复树全量 `406 passed, 8 skipped`，专项 `34 passed`，Ruff、compileall、diff-check 已通过；
+- 本修复只针对C1-1独立复审发现，不实现 Redis State、Task 状态机、11 操作业务语义或真实 NATS/JetStream 故障验收；因此不满足 C1 整体退出门禁，也不代表完整 A2A v1 兼容或生产就绪；
+- 第二代 remediation 独立复审和提交后完整门禁完成前，状态保持 `candidate/pending-review`，不得写 `[verified]`。
 
 ### 8.5 C1-2 当前模块：官方 TaskState 纯状态合同
 

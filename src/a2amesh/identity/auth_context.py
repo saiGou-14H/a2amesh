@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import time
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from dataclasses import asdict, dataclass, field
 from types import MappingProxyType
 
@@ -12,6 +12,15 @@ import nkeys
 
 from .nkey import nkey_public_key, sign_nkey, verify_nkey_signature
 from .principal import Principal
+
+
+def _freeze_string_claims(value: object, field_name: str) -> frozenset[str]:
+    if isinstance(value, (str, bytes)) or not isinstance(value, Collection):
+        raise ValueError(f"{field_name} must be a collection of strings")
+    frozen = frozenset(value)
+    if not all(isinstance(item, str) for item in frozen):
+        raise ValueError(f"{field_name} must be a collection of strings")
+    return frozen
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,6 +35,10 @@ class AuthContext:
     request_id: str
     target_agent_id: str
     alias_generation: int = 0
+
+    def __post_init__(self) -> None:
+        if type(self.alias_generation) is not int or self.alias_generation < 0:
+            raise ValueError("alias_generation must be a non-negative integer")
 
     @classmethod
     def create(
@@ -76,20 +89,26 @@ class AuthProof:
 class SignerPolicy:
     """Exact claims and server-side Principal provenance one signer may represent."""
 
-    principal_ids: frozenset[str]
-    methods: frozenset[str]
-    subjects: frozenset[str]
+    principal_ids: Collection[str]
+    methods: Collection[str]
+    subjects: Collection[str]
     principal_bindings: Mapping[str, Principal] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
+        principal_ids = _freeze_string_claims(self.principal_ids, "principal_ids")
+        methods = _freeze_string_claims(self.methods, "methods")
+        subjects = _freeze_string_claims(self.subjects, "subjects")
         bindings = dict(self.principal_bindings)
-        if not self.principal_ids or set(bindings) != set(self.principal_ids):
+        if not principal_ids or set(bindings) != set(principal_ids):
             raise ValueError(
                 "signer policy requires a complete principal binding for every principal_id"
             )
         for principal_id, principal in bindings.items():
             if not isinstance(principal, Principal) or principal.id != principal_id:
                 raise ValueError("signer policy principal binding does not match its key")
+        object.__setattr__(self, "principal_ids", principal_ids)
+        object.__setattr__(self, "methods", methods)
+        object.__setattr__(self, "subjects", subjects)
         object.__setattr__(self, "principal_bindings", MappingProxyType(bindings))
 
 
@@ -136,6 +155,8 @@ class AuthContextVerifier:
             raise ValueError("signer has no principal binding")
         if context.credential_id != bound_principal.credential_id:
             raise ValueError("credential binding does not match signer policy")
+        if type(context.alias_generation) is not int or context.alias_generation < 0:
+            raise ValueError("alias generation must be a non-negative integer")
         if context.alias_generation != bound_principal.alias_generation:
             raise ValueError("alias generation binding does not match signer policy")
         if context.method not in policy.methods:

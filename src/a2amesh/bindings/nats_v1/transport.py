@@ -44,13 +44,6 @@ _A2A_ERROR_CLASSES = tuple(
     for name in protocol_errors.__all__
     if name != "A2AError"
 )
-_BINDING_ERROR_TYPES = frozenset(
-    {
-        "InvalidBindingRequest",
-        "BindingTransportError",
-        "InternalError",
-    }
-)
 
 
 class BindingTransportError(RuntimeError):
@@ -131,35 +124,36 @@ class NatsRequestConnection(Protocol):
     async def flush(self) -> None: ...
 
 
+_CANONICAL_A2A_MESSAGE = "canonical application error"
+_BINDING_ERROR_MESSAGES = {
+    "InvalidBindingRequest": "binding request failed",
+    "BindingTransportError": "binding transport error",
+    "InternalError": "canonical application dispatch failed",
+}
+_A2A_ERROR_NAMES = frozenset(candidate.__name__ for candidate in _A2A_ERROR_CLASSES)
+
+
 def _safe_a2a_error_fields(error: A2AError) -> tuple[str, str]:
-    """Map official errors to a closed type set and a bounded safe message."""
+    """Map only known official errors to fixed, non-sensitive fields."""
     error_type = next(
         (candidate.__name__ for candidate in _A2A_ERROR_CLASSES if isinstance(error, candidate)),
-        "A2AError",
+        None,
     )
-    message = str(error)
-    if not message or len(message) > 512 or not all(char.isprintable() for char in message):
-        message = "canonical application error"
-    return error_type, message
+    if error_type is None:
+        return "InternalError", _CANONICAL_A2A_MESSAGE
+    return error_type, _CANONICAL_A2A_MESSAGE
 
 
-def _safe_binding_error_fields(error_type: str, error_message: str) -> tuple[str, str]:
-    if error_type not in _BINDING_ERROR_TYPES and error_type not in {
-        candidate.__name__ for candidate in _A2A_ERROR_CLASSES
-    }:
-        error_type = "InternalError"
-    if (
-        not isinstance(error_message, str)
-        or not error_message
-        or len(error_message) > 512
-        or not all(char.isprintable() for char in error_message)
-    ):
-        error_message = (
-            "canonical application error"
-            if error_type not in _BINDING_ERROR_TYPES
-            else "binding request failed"
-        )
-    return error_type, error_message
+def _safe_binding_error_fields(
+    error_type: object, _error_message: object
+) -> tuple[str, str]:
+    if not isinstance(error_type, str):
+        return "InternalError", _CANONICAL_A2A_MESSAGE
+    if error_type in _BINDING_ERROR_MESSAGES:
+        return error_type, _BINDING_ERROR_MESSAGES[error_type]
+    if error_type in _A2A_ERROR_NAMES:
+        return error_type, _CANONICAL_A2A_MESSAGE
+    return "InternalError", _CANONICAL_A2A_MESSAGE
 
 
 class V1NatsClient:
@@ -185,7 +179,10 @@ class V1NatsClient:
             raise ValueError("caller agent ID is invalid")
         if not re.fullmatch(r"^[A-Za-z0-9_-]{1,128}$", caller_instance_id):
             raise ValueError("caller instance ID is invalid")
-        if not 1 <= config_generation <= 9_007_199_254_740_991:
+        if (
+            type(config_generation) is not int
+            or not 1 <= config_generation <= 9_007_199_254_740_991
+        ):
             raise ValueError("config generation is invalid")
         if not 1 <= auth_ttl_seconds <= 900:
             raise ValueError("AuthContext TTL must be between 1 and 900 seconds")
@@ -322,7 +319,10 @@ class V1NatsServer:
     ) -> None:
         if not _AGENT_ID.fullmatch(agent_id):
             raise ValueError("agent ID is invalid")
-        if not 1 <= active_config_generation <= 9_007_199_254_740_991:
+        if (
+            type(active_config_generation) is not int
+            or not 1 <= active_config_generation <= 9_007_199_254_740_991
+        ):
             raise ValueError("active config generation must be a positive safe integer")
         if application is None:
             raise ValueError("canonical application is required")
@@ -404,20 +404,20 @@ class V1NatsServer:
                 payload=result,
             )
             await message.respond(response.to_json_bytes())
-        except BindingValidationError as exc:
+        except BindingValidationError:
             await self._respond_error(
                 message,
                 envelope,
                 "InvalidBindingRequest",
-                str(exc),
+                "binding request failed",
                 retryable=False,
             )
-        except BindingTransportError as exc:
+        except BindingTransportError:
             await self._respond_error(
                 message,
                 envelope,
                 "BindingTransportError",
-                str(exc),
+                "binding transport error",
                 retryable=False,
             )
         except A2AError as exc:
