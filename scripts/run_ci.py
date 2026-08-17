@@ -28,6 +28,7 @@ class Gate:
 
 
 _GIT_EXECUTABLE = shutil.which("git")
+_REPORT_SCOPE = "core-gates"
 
 DEFAULT_GATES = (
     Gate("official-fixtures", (sys.executable, "scripts/verify_a2a_fixtures.py")),
@@ -41,6 +42,7 @@ DEFAULT_GATES = (
             "docs/specs",
         ),
     ),
+    Gate("sdist-closure", (sys.executable, "scripts/verify_sdist_closure.py")),
     Gate("wheel-resources", (sys.executable, "scripts/verify_wheel_resources.py")),
     Gate("pytest", (sys.executable, "-m", "pytest", "-q")),
     Gate("ruff", (sys.executable, "-m", "ruff", "check", ".")),
@@ -68,12 +70,13 @@ def _git_value(cwd: Path, *arguments: str) -> str | None:
             cwd=cwd,
             check=False,
             capture_output=True,
-            text=True,
             env=_clean_environment(),
         )
     except OSError:
         return None
-    return result.stdout.strip() if result.returncode == 0 else None
+    if result.returncode != 0:
+        return None
+    return result.stdout.decode("utf-8", errors="replace").strip()
 
 
 def _repository_snapshot(cwd: Path) -> dict[str, Any]:
@@ -93,12 +96,11 @@ def _run_gate(gate: Gate, cwd: Path) -> dict[str, Any]:
             cwd=cwd,
             check=False,
             capture_output=True,
-            text=True,
             env=_clean_environment(),
         )
         return_code = result.returncode
-        stdout = result.stdout
-        stderr = result.stderr
+        stdout = result.stdout.decode("utf-8", errors="replace")
+        stderr = result.stderr.decode("utf-8", errors="replace")
     except OSError as exc:
         return_code = 127
         stdout = ""
@@ -114,13 +116,11 @@ def _run_gate(gate: Gate, cwd: Path) -> dict[str, Any]:
     }
 
 
-def run_gates(gates: Sequence[Gate], cwd: Path) -> dict[str, Any]:
-    """Execute every gate and return a complete report, even after failures."""
+def _new_report(status: str, cwd: Path, gates: list[dict[str, Any]]) -> dict[str, Any]:
     resolved_cwd = cwd.resolve()
-    results = [_run_gate(gate, resolved_cwd) for gate in gates]
-    status = "passed" if all(item["returnCode"] == 0 for item in results) else "failed"
     return {
         "schemaVersion": "1",
+        "scope": _REPORT_SCOPE,
         "generatedAt": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "status": status,
         "workingDirectory": str(resolved_cwd),
@@ -129,8 +129,16 @@ def run_gates(gates: Sequence[Gate], cwd: Path) -> dict[str, Any]:
             "version": platform.python_version(),
         },
         "repository": _repository_snapshot(resolved_cwd),
-        "gates": results,
+        "gates": gates,
     }
+
+
+def run_gates(gates: Sequence[Gate], cwd: Path) -> dict[str, Any]:
+    """Execute every gate and return a complete report, even after failures."""
+    resolved_cwd = cwd.resolve()
+    results = [_run_gate(gate, resolved_cwd) for gate in gates]
+    status = "passed" if all(item["returnCode"] == 0 for item in results) else "failed"
+    return _new_report(status, resolved_cwd, results)
 
 
 def write_report(report: dict[str, Any], path: Path) -> None:
@@ -168,8 +176,42 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    report = run_gates(DEFAULT_GATES, repository_root)
-    write_report(report, args.report)
+    try:
+        args.report.unlink(missing_ok=True)
+        write_report(_new_report("running", repository_root, []), args.report)
+    except OSError as exc:
+        print(f"CI report initialization failed: {exc}", file=sys.stderr)
+        return 1
+
+    try:
+        report = run_gates(DEFAULT_GATES, repository_root)
+    except Exception as exc:  # noqa: BLE001 - internal failures must invalidate stale reports
+        report = _new_report(
+            "failed",
+            repository_root,
+            [
+                {
+                    "id": "runner-internal",
+                    "command": [],
+                    "returnCode": 1,
+                    "durationMs": 0,
+                    "stdout": "",
+                    "stderr": f"{type(exc).__name__}: {exc}\n",
+                }
+            ],
+        )
+        try:
+            write_report(report, args.report)
+        except OSError as write_exc:
+            print(f"CI failure report write failed: {write_exc}", file=sys.stderr)
+        print(f"CI failed internally: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return 1
+
+    try:
+        write_report(report, args.report)
+    except OSError as exc:
+        print(f"CI report write failed: {exc}", file=sys.stderr)
+        return 1
     passed = sum(item["returnCode"] == 0 for item in report["gates"])
     print(
         f"CI {report['status']}: {passed}/{len(report['gates'])} gates passed; "

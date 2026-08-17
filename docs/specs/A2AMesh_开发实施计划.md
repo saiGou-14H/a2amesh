@@ -68,7 +68,7 @@ V1.6/V1.2 当前为 **G0 候选设计集**：首轮独立复审问题已纳入�
 |---|---|---|---|
 | 纯Python Artifact contract | `PYTHONDONTWRITEBYTECODE=1 uv run --extra test pytest -q tests/test_artifact_hold_expiry.py -p no:cacheprovider` → `85 passed` | strict wire、State-side SCAN allocation proof、SCAN authority seal、REPLAY current-authority pointer、cross-record fail-closed、单CAS write-set的确定性行为 | Redis Function/Lua、restart durability、真实NATS/AuthProof/ACL、跨进程/三机故障 |
 | 架构资产静态门禁 | `tests/test_architecture_assets.py` → `9 passed`；machine-edge allowlist exact、53条path签名allowlist、SVG/HTML twin bytes相同；`TEST-ASSET-ARCH-001` | 当前SVG/HTML的路径集合、角色标签和声明边界 | 运行时ACL、真实组件身份、Redis/NATS权限 |
-| 浏览器资产门禁 | `A2AMESH_REQUIRE_BROWSER_GATE=1 uv run --with playwright pytest -q tests/test_architecture_browser_smoke.py` → `1 passed` | 真实Chromium下HTML标准模式、无page error、视口/缩放/控件/布局约束 | 任何Redis/NATS/A2A/Windows/NAT/安全授权能力 |
+| 浏览器资产门禁 | `A2AMESH_REQUIRE_BROWSER_GATE=1 uv run --locked --extra test --extra browser-test pytest -q tests/test_architecture_browser_smoke.py` → `1 passed` | 真实Chromium下HTML标准模式、无page error、视口/缩放/控件/布局约束 | 任何Redis/NATS/A2A/Windows/NAT/安全授权能力 |
 | 真实集成/发布 | 尚未完成 | — | 全量release verdict、官方A2A黑盒、Redis重启、NATS secure ACL/AuthProof、Windows NAT、多进程恢复、Object Store/生产就绪 |
 
 R11-C/R11-D局部GREEN不能关闭G0，也不能改变`private A2A-inspired NATS prototype`结论。最终release gate仍必须在最终dirty tree执行全量pytest、Ruff、JetStream、sdist隔离、强制Chromium及独立复审；未完成前checkpoint commit不得使用`[verified]`。
