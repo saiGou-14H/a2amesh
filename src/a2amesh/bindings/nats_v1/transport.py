@@ -17,9 +17,10 @@ from uuid import uuid4
 
 import nkeys
 
-from a2amesh.core import OPERATION_SPECS, Operation
+from a2amesh.core import OPERATION_SPECS, Operation, dispatch_unary
 from a2amesh.core.application import CanonicalApplication, CanonicalRequestContext
 from a2amesh.identity import SignerPolicy, nkey_public_key
+from a2amesh.protocol.errors import A2AError
 
 from .auth import (
     BindingAuthVerifier,
@@ -342,12 +343,16 @@ class V1NatsServer:
                 )
             context = CanonicalRequestContext(
                 request_id=verified.request_id,
-                principal_id=verified.principal_id,
+                principal=verified.principal,
                 target_agent_id=self.agent_id,
                 config_generation=envelope.config_generation,
             )
-            handler = getattr(self.application, spec.handler_name)
-            result = await handler(envelope.payload, context)
+            result = await dispatch_unary(
+                self.application,
+                envelope.operation,
+                envelope.payload,
+                context,
+            )
             response = BindingResponseEnvelope(
                 operation=envelope.operation,
                 request_id=envelope.request_id,
@@ -368,6 +373,14 @@ class V1NatsServer:
                 message,
                 envelope,
                 "BindingTransportError",
+                str(exc),
+                retryable=False,
+            )
+        except A2AError as exc:
+            await self._respond_error(
+                message,
+                envelope,
+                type(exc).__name__,
                 str(exc),
                 retryable=False,
             )

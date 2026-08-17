@@ -21,7 +21,7 @@ from a2amesh.bindings.nats_v1 import (
     canonical_signing_bytes,
     sign_request_envelope,
 )
-from a2amesh.identity import SignerPolicy, nkey_public_key
+from a2amesh.identity import Principal, SignerPolicy, nkey_public_key
 
 FIXTURE = Path(__file__).parent / "fixtures" / "a2a_v1" / "nats_send_message_request.json"
 SIGNING_CONTRACT = (
@@ -97,6 +97,9 @@ async def test_signed_envelope_verifies_and_claims_replay_after_signature() -> N
 
     identity = await verifier.verify(signed, **verify_kwargs(signer))
 
+    assert identity.principal == Principal(
+        "a2a:cli-buildbot", "a2a", credential_id="cli-buildbot"
+    )
     assert identity.principal_id == "a2a:cli-buildbot"
     assert identity.credential_id == "cli-buildbot"
     assert identity.signer == signer

@@ -416,7 +416,20 @@ tests/unit/protocol/
 9. RequestContext 明确定义 Canonical Principal；11 个操作不得直接读取 Token/Binding metadata。
 10. 官方 tenant 非空统一在 Core 前置 validator 拒绝，空值保持 SDK 兼容。
 
-### 8.4 退出门禁
+### 8.4 C1-1 当前模块：可信 Context 与首个 Unary Contract
+
+截至 2026-08-17 11:32（Asia/Shanghai），已形成一个可独立回滚的 C1-1 实现候选：
+
+- `core/application.py` 保留动态 protobuf SDK 的运行时精确校验，并提供 `CanonicalRequestContext`、`CanonicalApplication` 和 `dispatch_unary`；
+- `CanonicalRequestContext` 只接受已验证 `Principal`、安全 `request_id`、目标 Agent 和正的 config generation，不持有 Token 或 Binding metadata；
+- `protocol/application.py` 是对外稳定 facade，`protocol/errors.py` 统一暴露官方 A2A error 类型，禁止按 HTTP/NATS 重新定义 Core 错误；
+- NATS v1 verified identity 转换为 `Principal` 后才进入 Core；unary path 复用统一 dispatcher，响应类型错误映射为官方 `InvalidAgentResponseError`；
+- C1-1 首个纵向操作为 `GetTask` 的 `GetTaskRequest → Task` contract，另覆盖 request type、非空 tenant、streaming 误用和错误 response 的负例；
+- 实测：C1 新增/受影响测试 `38 passed, 1 skipped`；此前全量候选测试 `370 passed, 8 skipped`；Ruff、compileall、diff-check 通过；
+- 本模块不实现 Redis State、Task 状态机、11 操作业务语义或真实 NATS/JetStream 故障验收；因此不满足 C1 整体退出门禁，也不代表完整 A2A v1 兼容或生产就绪；
+- C1-1 checkpoint 和独立只读复审完成前，状态保持 `candidate/pending-review`，不得写 `[verified]`。
+
+### 8.5 退出门禁（C1 整体）
 
 - 11 方法接口存在且有 contract test；
 - 官方 SDK 可解析所有输入/输出；

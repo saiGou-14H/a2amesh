@@ -239,6 +239,29 @@ async def test_signed_v1_client_server_dispatches_canonical_send_and_get_without
     await server.close()
 
 
+class WrongResponseCanonicalApp(CanonicalApp):
+    async def send_message(self, request, context):
+        del request, context
+        return protocol.Task(id="wrong-response")
+
+
+@pytest.mark.asyncio
+async def test_server_maps_core_response_contract_failure_without_legacy_fallback() -> None:
+    broker = FakeBroker()
+    pair = key_pair()
+    app = WrongResponseCanonicalApp()
+    server, _ = make_server(broker, pair, app)
+    await server.start()
+    client = make_client(FakeConnection(broker, "caller-a"), pair)
+
+    with pytest.raises(BindingRemoteError, match="InvalidAgentResponseError"):
+        await client.send_message(
+            protocol.SendMessageRequest(),
+            target_agent_id="worker",
+        )
+    await server.close()
+
+
 @pytest.mark.asyncio
 async def test_same_request_id_is_rejected_by_replay_guard_and_is_not_retried_to_legacy() -> None:
     broker = FakeBroker()

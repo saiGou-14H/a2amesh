@@ -13,6 +13,7 @@ import rfc8785
 from google.protobuf.json_format import SerializeToJsonError
 
 from a2amesh.identity import (
+    Principal,
     SignerPolicy,
     nkey_public_key,
     sign_nkey,
@@ -80,10 +81,17 @@ class RequestReplayGuard(Protocol):
 
 @dataclass(frozen=True, slots=True)
 class VerifiedBindingIdentity:
-    principal_id: str
-    credential_id: str
+    principal: Principal
     signer: str
     request_id: str
+
+    @property
+    def principal_id(self) -> str:
+        return self.principal.id
+
+    @property
+    def credential_id(self) -> str | None:
+        return self.principal.credential_id
 
 
 def canonical_signing_bytes(envelope: SignedBindingEnvelope) -> bytes:
@@ -253,8 +261,11 @@ class BindingAuthVerifier:
             raise BindingValidationError("binding request replay detected")
 
         return VerifiedBindingIdentity(
-            principal_id=context.principal_id,
-            credential_id=context.credential_id,
+            principal=Principal(
+                context.principal_id,
+                context.principal_id.split(":", 1)[0],
+                credential_id=context.credential_id,
+            ),
             signer=proof.signer,
             request_id=envelope.request_id,
         )
