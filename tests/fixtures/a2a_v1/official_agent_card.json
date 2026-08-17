@@ -1,0 +1,44 @@
+{
+  "name": "A2AMesh Fixture Agent",
+  "description": "Pinned official A2A v1 fixture",
+  "supportedInterfaces": [
+    {
+      "url": "https://mesh.example.test/a2a",
+      "protocolBinding": "JSONRPC",
+      "protocolVersion": "1.0"
+    }
+  ],
+  "provider": {
+    "url": "https://mesh.example.test",
+    "organization": "A2AMesh"
+  },
+  "version": "1.0.0",
+  "capabilities": {
+    "streaming": true
+  },
+  "defaultInputModes": [
+    "text/plain"
+  ],
+  "defaultOutputModes": [
+    "text/plain"
+  ],
+  "skills": [
+    {
+      "id": "echo",
+      "name": "Echo",
+      "description": "Returns text",
+      "tags": [
+        "fixture"
+      ],
+      "examples": [
+        "hello"
+      ],
+      "inputModes": [
+        "text/plain"
+      ],
+      "outputModes": [
+        "text/plain"
+      ]
+    }
+  ]
+}

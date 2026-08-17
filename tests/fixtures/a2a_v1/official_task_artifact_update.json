@@ -1,0 +1,14 @@
+{
+  "taskId": "task-fixture-001",
+  "contextId": "context-fixture-001",
+  "artifact": {
+    "artifactId": "artifact-fixture-001",
+    "name": "result.txt",
+    "parts": [
+      {
+        "text": "fixture artifact"
+      }
+    ]
+  },
+  "lastChunk": true
+}

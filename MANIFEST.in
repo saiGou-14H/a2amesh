@@ -1,4 +1,6 @@
 recursive-include tests/fixtures *.json
+include tests/conformance/test_official_types.py
+include scripts/verify_a2a_fixtures.py
 include tests/test_architecture_browser_smoke.py
 recursive-include docs/specs *.md
 recursive-include docs/assets *.html *.svg

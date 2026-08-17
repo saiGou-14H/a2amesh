@@ -1,0 +1,8 @@
+{
+  "taskId": "task-fixture-001",
+  "contextId": "context-fixture-001",
+  "status": {
+    "state": "TASK_STATE_WORKING",
+    "timestamp": "2026-08-16T00:00:00Z"
+  }
+}

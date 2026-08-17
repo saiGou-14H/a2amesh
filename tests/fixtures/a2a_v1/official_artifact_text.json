@@ -1,0 +1,10 @@
+{
+  "artifactId": "artifact-fixture-001",
+  "name": "result.txt",
+  "description": "Pinned artifact fixture",
+  "parts": [
+    {
+      "text": "fixture artifact"
+    }
+  ]
+}

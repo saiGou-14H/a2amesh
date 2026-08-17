@@ -1,0 +1,51 @@
+{
+  "schemaVersion": "1",
+  "specVersion": "1.0.1",
+  "sdkPackage": "a2a-sdk",
+  "sdkVersion": "1.1.2",
+  "fixtures": [
+    {
+      "id": "agent-card",
+      "file": "official_agent_card.json",
+      "kind": "protobuf",
+      "type": "AgentCard"
+    },
+    {
+      "id": "message-user-text",
+      "file": "message_user_text.json",
+      "kind": "protobuf",
+      "type": "Message"
+    },
+    {
+      "id": "task-completed",
+      "file": "official_task_completed.json",
+      "kind": "protobuf",
+      "type": "Task"
+    },
+    {
+      "id": "artifact-text",
+      "file": "official_artifact_text.json",
+      "kind": "protobuf",
+      "type": "Artifact"
+    },
+    {
+      "id": "task-status-update",
+      "file": "official_task_status_update.json",
+      "kind": "protobuf",
+      "type": "TaskStatusUpdateEvent"
+    },
+    {
+      "id": "task-artifact-update",
+      "file": "official_task_artifact_update.json",
+      "kind": "protobuf",
+      "type": "TaskArtifactUpdateEvent"
+    },
+    {
+      "id": "error-task-not-found",
+      "file": "official_task_not_found_error.json",
+      "kind": "jsonrpc-error",
+      "type": "JSONRPCError",
+      "reason": "TASK_NOT_FOUND"
+    }
+  ]
+}

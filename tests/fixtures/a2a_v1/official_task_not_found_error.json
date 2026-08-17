@@ -1,0 +1,7 @@
+{
+  "code": -32001,
+  "message": "Task not found",
+  "data": {
+    "taskId": "task-missing-fixture"
+  }
+}
