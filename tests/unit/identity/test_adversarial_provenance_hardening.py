@@ -169,6 +169,23 @@ def test_nats_verifier_policy_snapshot_cannot_be_replaced() -> None:
         verifier._signer_policies["forged"] = legacy_policy("forged")  # type: ignore[index]
 
 
+def test_verifier_policy_snapshot_attribute_cannot_be_replaced() -> None:
+    legacy_verifier = AuthContextVerifier({"signer": legacy_policy("signer")})
+    nats_verifier = BindingAuthVerifier(
+        {"signer": legacy_policy("signer")},
+        MemoryReplayGuard(),
+    )
+    for verifier in (legacy_verifier, nats_verifier):
+        with pytest.raises(AttributeError):
+            verifier._signer_policies = {"forged": legacy_policy("forged")}  # type: ignore[attr-defined]
+    stream_verifier = StreamControlAuthVerifier(
+        {"signer": legacy_policy("signer")},
+        MemoryReplayGuard(),
+    )
+    with pytest.raises(AttributeError):
+        stream_verifier._common = nats_verifier  # type: ignore[assignment]
+
+
 def test_auth_context_verifier_rejects_mutable_claim_before_it_can_mutate() -> None:
     mutable_method = MutableClaim("forged-method", "not-authorized")
     with pytest.raises(ValueError, match="collection of strings"):

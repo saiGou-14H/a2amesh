@@ -250,6 +250,13 @@ def sign_stream_control_envelope(
 class StreamControlAuthVerifier:
     """Authenticate a stream control envelope and bind it to its literal subject."""
 
+    __slots__ = ("_common", "_sealed")
+
+    def __setattr__(self, name: str, value: object) -> None:
+        if getattr(self, "_sealed", False) and name in {"_common", "_sealed"}:
+            raise AttributeError("StreamControlAuthVerifier configuration is immutable")
+        object.__setattr__(self, name, value)
+
     def __init__(
         self,
         signer_policies: Mapping[str, SignerPolicy],
@@ -264,6 +271,7 @@ class StreamControlAuthVerifier:
             clock_skew_seconds=clock_skew_seconds,
             max_auth_lifetime_seconds=max_auth_lifetime_seconds,
         )
+        self._sealed = True
 
     async def verify(
         self,

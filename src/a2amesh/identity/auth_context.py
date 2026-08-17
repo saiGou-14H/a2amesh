@@ -7,6 +7,7 @@ import time
 from collections.abc import Collection, Mapping
 from dataclasses import asdict, dataclass, field
 from types import MappingProxyType
+from typing import ClassVar
 
 import nkeys
 
@@ -146,6 +147,16 @@ def sign_auth_context(context: AuthContext, key_pair: nkeys.KeyPair) -> AuthProo
 class AuthContextVerifier:
     """Verify signatures, expiry, target binding, and request replay."""
 
+    __slots__ = ("_signer_policies", "clock_skew_seconds", "_seen", "_sealed")
+    _SEALED_FIELDS: ClassVar[frozenset[str]] = frozenset(
+        {"_signer_policies", "clock_skew_seconds", "_sealed"}
+    )
+
+    def __setattr__(self, name: str, value: object) -> None:
+        if getattr(self, "_sealed", False) and name in self._SEALED_FIELDS:
+            raise AttributeError("AuthContextVerifier configuration is immutable")
+        object.__setattr__(self, name, value)
+
     def __init__(
         self,
         signer_policies: Mapping[str, SignerPolicy],
@@ -162,6 +173,7 @@ class AuthContextVerifier:
         self._signer_policies = MappingProxyType(dict(policy_items))
         self.clock_skew_seconds = clock_skew_seconds
         self._seen: dict[str, int] = {}
+        self._sealed = True
 
     @property
     def signer_policies(self) -> Mapping[str, SignerPolicy]:

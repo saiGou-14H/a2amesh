@@ -135,6 +135,28 @@ def sign_request_envelope(
 class BindingAuthVerifier:
     """Fail-closed transport authentication before canonical Core dispatch."""
 
+    __slots__ = (
+        "_signer_policies",
+        "_replay_guard",
+        "_clock_skew",
+        "_max_auth_lifetime",
+        "_sealed",
+    )
+    _SEALED_FIELDS = frozenset(
+        {
+            "_signer_policies",
+            "_replay_guard",
+            "_clock_skew",
+            "_max_auth_lifetime",
+            "_sealed",
+        }
+    )
+
+    def __setattr__(self, name: str, value: object) -> None:
+        if getattr(self, "_sealed", False) and name in self._SEALED_FIELDS:
+            raise AttributeError("BindingAuthVerifier configuration is immutable")
+        object.__setattr__(self, name, value)
+
     def __init__(
         self,
         signer_policies: Mapping[str, SignerPolicy],
@@ -160,6 +182,7 @@ class BindingAuthVerifier:
         self._replay_guard = replay_guard
         self._clock_skew = timedelta(seconds=clock_skew_seconds)
         self._max_auth_lifetime = timedelta(seconds=max_auth_lifetime_seconds)
+        self._sealed = True
 
     async def verify(
         self,
