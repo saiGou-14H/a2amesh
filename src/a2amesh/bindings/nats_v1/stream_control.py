@@ -30,6 +30,16 @@ _STREAMING_OPERATIONS = {
 _JSON_SAFE_MAX = 9_007_199_254_740_991
 
 
+def _plain_wire_string(data: dict[str, Any], field_name: str) -> str:
+    try:
+        value = data[field_name]
+    except (KeyError, TypeError) as exc:
+        raise BindingValidationError(f"{field_name} is required") from exc
+    if type(value) is not str:
+        raise BindingValidationError(f"{field_name} must be a plain string")
+    return value
+
+
 class StreamControlKind(StrEnum):
     OPEN = "open"
     ACK = "ack"
@@ -172,6 +182,8 @@ class StreamOpenRequestV1:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Self:
+        _plain_wire_string(data, "schemaVersion")
+        _plain_wire_string(data, "operation")
         _validate("open", data)
         expires_at = _parse_timestamp(data["expiresAt"])
         if _format_timestamp_ms(expires_at) != data["expiresAt"]:
@@ -226,6 +238,7 @@ class StreamAckRequestV1:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Self:
+        _plain_wire_string(data, "schemaVersion")
         _validate("ack", data)
         return cls(
             stream_session_id=data["streamSessionId"],
@@ -266,6 +279,7 @@ class StreamCloseRequestV1:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Self:
+        _plain_wire_string(data, "schemaVersion")
         _validate("close", data)
         return cls(
             stream_session_id=data["streamSessionId"],

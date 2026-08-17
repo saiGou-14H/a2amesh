@@ -51,6 +51,16 @@ _VALIDATOR = jsonschema.Draft202012Validator(
     format_checker=jsonschema.FormatChecker(),
 )
 
+
+def _plain_wire_string(data: dict[str, Any], field_name: str) -> str:
+    try:
+        value = data[field_name]
+    except (KeyError, TypeError) as exc:
+        raise BindingValidationError(f"{field_name} is required") from exc
+    if type(value) is not str:
+        raise BindingValidationError(f"{field_name} must be a plain string")
+    return value
+
 StreamControlPayload: TypeAlias = (
     StreamOpenRequestV1 | StreamAckRequestV1 | StreamCloseRequestV1
 )
@@ -176,6 +186,8 @@ class StreamControlEnvelopeV1:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> StreamControlEnvelopeV1:
+        _plain_wire_string(data, "bindingSchemaVersion")
+        _plain_wire_string(data, "operation")
         _validate_schema(data)
         try:
             operation = StreamControlOperation(data["operation"])

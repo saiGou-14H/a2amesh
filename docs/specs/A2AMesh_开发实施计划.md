@@ -429,7 +429,7 @@ tests/unit/protocol/
 - 本模块不实现 Redis State、Task 状态机、11 操作业务语义或真实 NATS/JetStream 故障验收；因此不满足 C1 整体退出门禁，也不代表完整 A2A v1 兼容或生产就绪；
 - C1-1 checkpoint 和独立只读复审完成前，状态保持 `candidate/pending-review`，不得写 `[verified]`。
 
-截至 2026-08-17 15:24（Asia/Shanghai），第一轮 remediation `6baef3d`、第三代 `436a562`、第五代 `4bda50b` 和第八代 `2f6a2ab` 的复审结论均为 `BLOCKED`；第四代 `fd0965d` 限界PASS未覆盖stream P1，第六/七代被封存探针取代，第八代又被wire临时字段与protobuf浅层别名P1取代，已进入第九代：
+截至 2026-08-17 15:55（Asia/Shanghai），第一轮 remediation `6baef3d`、第三代 `436a562`、第五代 `4bda50b`、第八代 `2f6a2ab` 和第九代 `c6e093b` 的复审均为 `BLOCKED`；第九代QA又确认nested `initialFrame.schemaVersion`及stream-control/NATS direct `from_dict`仍在schema/Enum前接受hostile字符串，已进入第十代：
 
 - 第二代残留缺口已实测复现：`AuthContextVerifier.signer_policies` 外层map可替换；`frozenset`仍接受可变`str`子类；server-bound `Principal.credential_id`可为可变对象；`_safe_binding_error_fields`可被恶意`__hash__`打断；`retryable=1`被接受；NATS与stream verifier的`expected_*_generation=True`被接受；wire/legacy同名`AuthContext`混用可触发`AttributeError`；
 - 第三代修复：Principal/AuthContext/AuthProof及policy claim/binding均拒绝非plain primitive；policy输入先复制再冻结，legacy/NATS verifier policy snapshot为只读；unknown A2A仅exact official type保留，否则固定InternalError；BindingError严格要求plain string和exact bool；NATS/stream expected generation入口执行exact-int；wire/stream envelope对AuthContext/AuthProof/payload执行结构化exact-type校验；
@@ -440,9 +440,10 @@ tests/unit/protocol/
 - 第六代追加探针实测可把实例`__class__`普通重绑定到同slot布局、覆盖`__setattr__`的恶意子类后替换`_auth`，且继承的`__delattr__`允许删除`_sealed`；第七代把`__class__`加入封存集合，并以对称`__delattr__`禁止删除全部安全配置，resolver/runtime state仍保持可变；
 - 第五代完整复审的第二项P1确认`stream.py`的frame/cursor/opened仍保留12个`str`/`datetime`子类字段，可伪造digest equality、session equality和delivery `rsplit()`绑定；第八代统一改为exact string/datetime/official DTO gate，并在timestamp parser执行任何字符串方法前拒绝非plain string；
 - 第八代复审新增确认：`stream.py`的`from_dict`在schema/operation比较和Enum转换前仍接受hostile string子类；frame直接持有可变protobuf，原对象或从DTO取出的message变更后可产生陈旧digest并被序列化/cursor接受；第九代在wire入口加plain-string gate，对protobuf做防御性snapshot，并在序列化、opened校验和cursor.accept前重验digest；
-- 第九代同时封存legacy/NATS/stream三类verifier的`__class__`和安全slot删除路径，保留replay/identity resolver等明确运行态；新增wire/protobuf/verifier回归，hardening专项 `34 passed`，全量 `441 passed, 8 skipped`，8/8机器门禁通过；
+- 第九代同时封存legacy/NATS/stream三类verifier的`__class__`和安全slot删除路径，保留replay/identity resolver等明确运行态；新增wire/protobuf/verifier回归，hardening专项 `34 passed`，全量 `441 passed, 8 skipped`；
+- 第九代QA新增确认：opened整体schema校验先于nested frame gate，且`StreamOpenRequestV1`、`StreamControlEnvelopeV1`、`BindingRequestEnvelope` direct `from_dict`均先schema后operation；第十代在各真实wire入口前置plain-string gate，保留无schemaVersion的`StreamControlResultV1`兼容路径；新增ingress矩阵，hardening `35 passed`，全量 `442 passed, 8 skipped`，8/8机器门禁通过；
 - 本修复只针对C1-1独立复审发现，不实现 Redis State、Task 状态机、11 操作业务语义或真实 NATS/JetStream 故障验收；因此不满足 C1 整体退出门禁，也不代表完整 A2A v1 兼容或生产就绪；
-- 第九代checkpoint、同树独立复审和提交后完整门禁完成前，状态保持 `candidate/pending-review`，不得写 `[verified]`。
+- 第十代checkpoint、同树独立复审和提交后完整门禁完成前，状态保持 `candidate/pending-review`，不得写 `[verified]`。
 
 ### 8.5 C1-2 当前模块：官方 TaskState 纯状态合同
 

@@ -41,6 +41,16 @@ class BindingValidationError(ValueError):
     """The NATS binding envelope or its official A2A payload is invalid."""
 
 
+def _plain_wire_string(data: dict[str, Any], field_name: str) -> str:
+    try:
+        value = data[field_name]
+    except (KeyError, TypeError) as exc:
+        raise BindingValidationError(f"{field_name} is required") from exc
+    if type(value) is not str:
+        raise BindingValidationError(f"{field_name} must be a plain string")
+    return value
+
+
 @dataclass(frozen=True, slots=True)
 class AuthContext:
     principal_id: str
@@ -205,6 +215,8 @@ class BindingRequestEnvelope:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> BindingRequestEnvelope:
+        _plain_wire_string(data, "bindingSchemaVersion")
+        _plain_wire_string(data, "operation")
         _validate_schema(data)
         try:
             operation = Operation(data["operation"])

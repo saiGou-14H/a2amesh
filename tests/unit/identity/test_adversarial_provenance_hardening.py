@@ -32,6 +32,7 @@ from a2amesh.bindings.nats_v1.stream_control import (
     StreamAckRequestV1,
     StreamCloseRequestV1,
     StreamOpenDigestContextV1,
+    StreamOpenRequestV1,
 )
 from a2amesh.bindings.nats_v1.transport import (
     V1NatsServer,
@@ -127,6 +128,16 @@ class ForgedWireString(str):
 
     def __ne__(self, other: object) -> bool:
         return other != self.accepted
+
+
+class ExplodingWireString(str):
+    def __eq__(self, other: object) -> bool:
+        del other
+        raise RuntimeError("hostile equality invoked")
+
+    def __ne__(self, other: object) -> bool:
+        del other
+        raise RuntimeError("hostile inequality invoked")
 
 
 class MutableCredential:
@@ -577,6 +588,48 @@ def test_stream_from_dict_rejects_hostile_wire_schema_and_operation_strings() ->
     opened_data["operation"] = ForgedWireString("DeleteTask", "SendStreamingMessage")
     with pytest.raises(BindingValidationError, match="operation"):
         StreamSessionOpenedV1.from_dict(opened_data)
+
+
+def test_nested_and_direct_ingress_wire_strings_are_gated_before_schema() -> None:
+    opened_data = json.loads((FIXTURES / "nats_stream_session_opened.json").read_text())
+    opened_data["initialFrame"]["schemaVersion"] = ExplodingWireString("1.0")
+    with pytest.raises(BindingValidationError, match="plain string"):
+        StreamSessionOpenedV1.from_dict(opened_data)
+
+    open_data = json.loads((FIXTURES / "nats_stream_open_request.json").read_text())
+    open_data["schemaVersion"] = ForgedWireString("bad", open_data["schemaVersion"])
+    with pytest.raises(BindingValidationError, match="plain string"):
+        StreamOpenRequestV1.from_dict(open_data)
+    open_data = json.loads((FIXTURES / "nats_stream_open_request.json").read_text())
+    open_data["operation"] = ForgedWireString("DeleteTask", open_data["operation"])
+    with pytest.raises(BindingValidationError, match="plain string"):
+        StreamOpenRequestV1.from_dict(open_data)
+
+    control_data = json.loads(
+        (FIXTURES / "nats_stream_control_ack_envelope.json").read_text()
+    )
+    control_data["bindingSchemaVersion"] = ForgedWireString(
+        "bad", control_data["bindingSchemaVersion"]
+    )
+    with pytest.raises(BindingValidationError, match="plain string"):
+        StreamControlEnvelopeV1.from_dict(control_data)
+    control_data = json.loads(
+        (FIXTURES / "nats_stream_control_ack_envelope.json").read_text()
+    )
+    control_data["operation"] = ForgedWireString("StreamSessionOpen", control_data["operation"])
+    with pytest.raises(BindingValidationError, match="plain string"):
+        StreamControlEnvelopeV1.from_dict(control_data)
+
+    request_data = json.loads((FIXTURES / "nats_send_message_request.json").read_text())
+    request_data["bindingSchemaVersion"] = ForgedWireString(
+        "bad", request_data["bindingSchemaVersion"]
+    )
+    with pytest.raises(BindingValidationError, match="plain string"):
+        BindingRequestEnvelope.from_dict(request_data)
+    request_data = json.loads((FIXTURES / "nats_send_message_request.json").read_text())
+    request_data["operation"] = ForgedWireString("GetTask", request_data["operation"])
+    with pytest.raises(BindingValidationError, match="plain string"):
+        BindingRequestEnvelope.from_dict(request_data)
 
 
 def test_stream_frame_copies_protobuf_and_rejects_post_construction_mutation() -> None:

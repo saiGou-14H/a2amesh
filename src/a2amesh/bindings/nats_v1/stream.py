@@ -402,6 +402,10 @@ class StreamSessionOpenedV1:
     def from_dict(cls, data: dict[str, Any]) -> StreamSessionOpenedV1:
         schema_version = _plain_wire_string(data, "schemaVersion")
         operation_value = _plain_wire_string(data, "operation")
+        initial_frame_data = data.get("initialFrame")
+        if not isinstance(initial_frame_data, dict):
+            raise BindingValidationError("initialFrame must be an object")
+        _plain_wire_string(initial_frame_data, "schemaVersion")
         if schema_version != STREAM_SCHEMA_VERSION:
             raise BindingValidationError("unsupported stream opened schemaVersion")
         _validate_opened_schema(data)
