@@ -300,7 +300,7 @@ class StreamControlResultV1:
     def __post_init__(self) -> None:
         if type(self.accepted) is not bool:
             raise BindingValidationError("accepted must be boolean")
-        if not isinstance(self.current_state, StreamSessionState):
+        if type(self.current_state) is not StreamSessionState:
             raise BindingValidationError("currentState is invalid")
         _validate("result", self.to_dict())
 
@@ -315,6 +315,7 @@ class StreamControlResultV1:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Self:
+        _plain_wire_string(data, "currentState")
         _validate("result", data)
         try:
             state = StreamSessionState(data["currentState"])
@@ -337,12 +338,12 @@ def compute_stream_open_request_digest(
     config_generation: int,
     digest_context: StreamOpenDigestContextV1,
 ) -> str:
-    if not isinstance(digest_context, StreamOpenDigestContextV1):
+    if type(digest_context) is not StreamOpenDigestContextV1:
         raise BindingValidationError("trusted stream open digest context is required")
     _validate_safe_token("streamOpenId", stream_open_id)
     _validate_safe_token("taskId", task_id)
     _validate_safe_token("callerInstanceId", caller_instance_id)
-    if not isinstance(operation, Operation) or operation not in _STREAMING_OPERATIONS:
+    if type(operation) is not Operation or operation not in _STREAMING_OPERATIONS:
         raise BindingValidationError("stream open operation must be streaming")
     _validate_timestamp("expiresAt", expires_at)
     _validate_positive_integer("configGeneration", config_generation)
@@ -420,6 +421,8 @@ def _format_timestamp_ms(value: datetime) -> str:
 
 
 def _parse_timestamp(value: str) -> datetime:
+    if type(value) is not str:
+        raise BindingValidationError("stream control timestamp must be a plain string")
     try:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     except (AttributeError, ValueError) as exc:

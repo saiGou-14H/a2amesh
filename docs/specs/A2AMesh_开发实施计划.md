@@ -473,7 +473,7 @@ tests/unit/protocol/
 - 本模块只针对transport-independent dispatch contract，不实现业务Task持久化、capability实现、version/lease/fencing、Redis CAS、真实stream broker或完整A2A生产互操作；不能宣称C1整体完成或生产就绪；
 - 第七代checkpoint、独立复审和提交后完整门禁完成前保持 `candidate/pending-review`，不得写 `[verified]`。
 
-截至 2026-08-17 16:18（Asia/Shanghai），C1-1 fix10与C1-3 fix7已分别通过精确独立复审，集成树 `e86ebda`/tree `712e7de` 已组合两者并通过集成前全量 `499 passed, 8 skipped`、8/8门禁；该集成树尚待提交后门禁与独立复审，不能标记 `[verified]`，也不代表C1整体、真实Redis/NATS或生产就绪。
+截至 2026-08-17 17:05（Asia/Shanghai），C1-1 fix10与C1-3 fix7已分别通过精确独立复审；集成树`bd6f360/7f59869`复审发现3个P2输入边界（control result伪enum、三处timestamp hostile子类、digest context宽泛类型判断），已在独立integration-fix2工作树完成RED→GREEN，当前全量`502 passed, 8 skipped`、8/8；待新checkpoint提交后独立复审，不能标记 `[verified]`。
 
 ### 8.7 退出门禁（C1 整体）
 

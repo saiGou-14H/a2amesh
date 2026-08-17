@@ -355,6 +355,10 @@ def _format_timestamp(value: datetime) -> str:
 
 
 def _parse_timestamp(value: str) -> datetime:
+    if type(value) is not str:
+        raise BindingValidationError(
+            "stream control envelope timestamp must be a plain string"
+        )
     try:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     except (AttributeError, ValueError) as exc:

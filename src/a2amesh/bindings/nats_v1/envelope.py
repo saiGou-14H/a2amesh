@@ -291,6 +291,8 @@ def _format_timestamp(value: datetime) -> str:
 
 
 def _parse_timestamp(value: str) -> datetime:
+    if type(value) is not str:
+        raise BindingValidationError("timestamp must be a plain string")
     try:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError as exc:

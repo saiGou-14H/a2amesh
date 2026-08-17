@@ -12,13 +12,16 @@ from typing import Any
 import pytest
 
 from a2amesh.bindings.nats_v1 import (
+    BindingRequestEnvelope,
     StreamAckRequestV1,
     StreamCloseRequestV1,
+    StreamControlEnvelopeV1,
     StreamControlKind,
     StreamControlResultV1,
     StreamOpenDigestContextV1,
     StreamOpenRequestV1,
     StreamSessionState,
+    compute_stream_open_request_digest,
 )
 from a2amesh.bindings.nats_v1.envelope import BindingValidationError
 from a2amesh.core import Operation
@@ -38,6 +41,74 @@ def digest_context() -> StreamOpenDigestContextV1:
         response_core_principal_hash=data["responseCorePrincipalHash"],
         consumer_config_digest=data["consumerConfigDigest"],
     )
+
+
+class ForgedStateString(str):
+    def __new__(cls, value: str, accepted: str) -> ForgedStateString:
+        result = str.__new__(cls, value)
+        result.accepted = accepted
+        return result
+
+    def __hash__(self) -> int:
+        return hash(self.accepted)
+
+    def __eq__(self, other: object) -> bool:
+        return other == self.accepted
+
+    def __ne__(self, other: object) -> bool:
+        return other != self.accepted
+
+
+class ExplodingTimestamp(str):
+    def replace(self, *args: object, **kwargs: object) -> str:
+        del args, kwargs
+        raise RuntimeError("hostile timestamp replace")
+
+
+class ClaimedDigestContext:
+    @property
+    def __class__(self):
+        return StreamOpenDigestContextV1
+
+
+def test_direct_control_result_rejects_forged_state_string() -> None:
+    data = fixture("control_result")
+    data["currentState"] = ForgedStateString("NOT-A-STATE", "ACTIVE")
+    with pytest.raises(BindingValidationError, match="plain string"):
+        StreamControlResultV1.from_dict(data)
+
+
+def test_direct_timestamp_parsers_reject_hostile_string_subclasses() -> None:
+    open_data = fixture("open_request")
+    open_data["expiresAt"] = ExplodingTimestamp(open_data["expiresAt"])
+    with pytest.raises(BindingValidationError, match="timestamp"):
+        StreamOpenRequestV1.from_dict(open_data)
+
+    control_data = json.loads(
+        (FIXTURES / "nats_stream_control_ack_envelope.json").read_text()
+    )
+    control_data["sentAt"] = ExplodingTimestamp(control_data["sentAt"])
+    with pytest.raises(BindingValidationError, match="timestamp"):
+        StreamControlEnvelopeV1.from_dict(control_data)
+
+    request_data = json.loads((FIXTURES / "nats_send_message_request.json").read_text())
+    request_data["sentAt"] = ExplodingTimestamp(request_data["sentAt"])
+    with pytest.raises(BindingValidationError, match="timestamp"):
+        BindingRequestEnvelope.from_dict(request_data)
+
+
+def test_digest_context_requires_exact_trusted_type() -> None:
+    request = StreamOpenRequestV1.from_dict(fixture("open_request"))
+    with pytest.raises(BindingValidationError, match="trusted stream open digest context"):
+        compute_stream_open_request_digest(
+            stream_open_id=request.stream_open_id,
+            operation=request.operation,
+            task_id=request.task_id,
+            caller_instance_id=request.caller_instance_id,
+            expires_at=request.expires_at,
+            config_generation=request.config_generation,
+            digest_context=ClaimedDigestContext(),  # type: ignore[arg-type]
+        )
 
 
 @pytest.mark.parametrize(
