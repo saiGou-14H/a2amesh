@@ -252,6 +252,12 @@ class BindingAuthVerifier:
             raise BindingValidationError(
                 "expected config generation must be a positive safe integer"
             )
+        if type(envelope.config_generation) is not int or not (
+            1 <= envelope.config_generation <= _JSON_SAFE_MAX
+        ):
+            raise BindingValidationError(
+                "envelope config generation must be a positive safe integer"
+            )
         current = datetime.now(UTC) if now is None else now
         if current.tzinfo is None:
             raise BindingValidationError("verification clock must be timezone-aware")

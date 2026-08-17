@@ -35,6 +35,15 @@ _RESPONSE_SCHEMA = json.loads(
 _RESPONSE_VALIDATOR = jsonschema.Draft202012Validator(_RESPONSE_SCHEMA)
 
 
+def _is_safe_error_message(value: object) -> bool:
+    return (
+        type(value) is str
+        and bool(value)
+        and len(value) <= 4096
+        and all(character.isprintable() for character in value)
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class BindingError:
     type: str
@@ -50,7 +59,7 @@ class BindingError:
             raise BindingValidationError("error.retryable must be boolean")
         if not re.fullmatch(r"^[A-Za-z][A-Za-z0-9_]{0,127}$", self.type):
             raise BindingValidationError("error.type is invalid")
-        if not self.message or len(self.message) > 4096:
+        if not _is_safe_error_message(self.message):
             raise BindingValidationError("error.message length is invalid")
 
     def to_dict(self) -> dict[str, Any]:

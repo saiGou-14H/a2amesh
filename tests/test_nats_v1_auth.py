@@ -122,6 +122,25 @@ async def test_signed_envelope_verifies_and_claims_replay_after_signature() -> N
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("generation", [True, 1.0])
+async def test_shared_verifier_rejects_non_exact_generation_before_replay(
+    generation: object,
+) -> None:
+    key_pair = make_user_key_pair()
+    signer = nkey_public_key(key_pair)
+    unsigned = replace(unsigned_fixture(), config_generation=1)
+    signed = sign_request_envelope(unsigned, key_pair)
+    guard = MemoryReplayGuard()
+    verifier = BindingAuthVerifier({signer: policy_for(signer)}, guard)
+    kwargs = verify_kwargs(signer)
+    kwargs["active_config_generation"] = generation
+
+    with pytest.raises(BindingValidationError, match="generation"):
+        await verifier.verify(signed, **kwargs)
+    assert guard.calls == 0
+
+
+@pytest.mark.asyncio
 async def test_signed_envelope_credential_claim_must_match_server_binding() -> None:
     key_pair = make_user_key_pair()
     signer = nkey_public_key(key_pair)
