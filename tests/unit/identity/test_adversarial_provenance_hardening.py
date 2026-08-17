@@ -372,6 +372,21 @@ def test_nats_server_auth_reference_cannot_be_replaced() -> None:
     with pytest.raises(AttributeError):
         _ = server.__dict__
 
+    class UnsealedServer(V1NatsServer):
+        __slots__ = ()
+
+        def __setattr__(self, name: str, value: object) -> None:
+            object.__setattr__(self, name, value)
+
+    with pytest.raises(AttributeError):
+        server.__class__ = UnsealedServer  # type: ignore[assignment]
+    with pytest.raises(AttributeError):
+        del server._sealed
+    with pytest.raises(AttributeError):
+        del server._auth
+    with pytest.raises(AttributeError):
+        del server.active_config_generation
+
     replacement_resolver = object()
     server.identity_resolver = replacement_resolver  # type: ignore[assignment]
     assert server.identity_resolver is replacement_resolver

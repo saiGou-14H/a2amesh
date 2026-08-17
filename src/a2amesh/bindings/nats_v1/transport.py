@@ -321,6 +321,7 @@ _V1_NATS_SERVER_SEALED_FIELDS = frozenset(
         "_clock",
         "_sealed",
         "auth",
+        "__class__",
     }
 )
 
@@ -346,6 +347,11 @@ class V1NatsServer:
         if getattr(self, "_sealed", False) and name in _V1_NATS_SERVER_SEALED_FIELDS:
             raise AttributeError("V1NatsServer security configuration is immutable")
         object.__setattr__(self, name, value)
+
+    def __delattr__(self, name: str) -> None:
+        if getattr(self, "_sealed", False) and name in _V1_NATS_SERVER_SEALED_FIELDS:
+            raise AttributeError("V1NatsServer security configuration is immutable")
+        object.__delattr__(self, name)
 
     def __init__(
         self,

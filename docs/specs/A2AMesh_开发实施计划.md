@@ -429,7 +429,7 @@ tests/unit/protocol/
 - 本模块不实现 Redis State、Task 状态机、11 操作业务语义或真实 NATS/JetStream 故障验收；因此不满足 C1 整体退出门禁，也不代表完整 A2A v1 兼容或生产就绪；
 - C1-1 checkpoint 和独立只读复审完成前，状态保持 `candidate/pending-review`，不得写 `[verified]`。
 
-截至 2026-08-17 14:12（Asia/Shanghai），第一轮 remediation `6baef3d`、第三代 `436a562` 的独立复审均为 `BLOCKED`。第四代 `fd0965d` 的限界同树复审为 `PASS`，但未覆盖stream DTO可变字符串P1；第五代 `4bda50b` 补齐DTO后，追加探针又确认server封存可经实例保护集合和`__dict__`绕过，已由第六代候选取代：
+截至 2026-08-17 14:17（Asia/Shanghai），第一轮 remediation `6baef3d`、第三代 `436a562` 的独立复审均为 `BLOCKED`。第四代 `fd0965d` 的限界同树复审未覆盖stream DTO P1；第五代 `4bda50b` 被实例保护集合/`__dict__`绕过打回；第六代 `5633dbe` 移除实例dict后又被同布局`__class__`重绑定和删除sealed slot绕过，已由第七代候选取代：
 
 - 第二代残留缺口已实测复现：`AuthContextVerifier.signer_policies` 外层map可替换；`frozenset`仍接受可变`str`子类；server-bound `Principal.credential_id`可为可变对象；`_safe_binding_error_fields`可被恶意`__hash__`打断；`retryable=1`被接受；NATS与stream verifier的`expected_*_generation=True`被接受；wire/legacy同名`AuthContext`混用可触发`AttributeError`；
 - 第三代修复：Principal/AuthContext/AuthProof及policy claim/binding均拒绝非plain primitive；policy输入先复制再冻结，legacy/NATS verifier policy snapshot为只读；unknown A2A仅exact official type保留，否则固定InternalError；BindingError严格要求plain string和exact bool；NATS/stream expected generation入口执行exact-int；wire/stream envelope对AuthContext/AuthProof/payload执行结构化exact-type校验；
@@ -437,9 +437,10 @@ tests/unit/protocol/
 - 第三代完整复审新增确认：stream envelope的`reply_subject`和stream payload/digest context多个字符串字段仍接受可变`str`子类，且公开`V1NatsServer.auth`引用可被替换；该结论优先于第四代较窄PASS；
 - 第五代候选把stream token/digest/reason/reply subject/timestamp改为exact primitive gate，并把`V1NatsServer.auth`改为封存的只读property，同时保留可替换resolver以执行无效输出负例；
 - 第五代追加探针实测先给实例`_SEALED_CONFIG_FIELDS`赋空集合即可再替换`_auth`，且实例`__dict__`可直接覆盖slot-like配置；第六代改用模块级不可变保护集合和`__slots__`，实例不再有`__dict__`，保护集合不能实例shadow，而resolver、subscription和tasks运行态仍按合同可更新；
+- 第六代追加探针实测可把实例`__class__`普通重绑定到同slot布局、覆盖`__setattr__`的恶意子类后替换`_auth`，且继承的`__delattr__`允许删除`_sealed`；第七代把`__class__`加入封存集合，并以对称`__delattr__`禁止删除全部安全配置，resolver/runtime state仍保持可变；
 - 新增独立对抗回归覆盖mutable claim/credential、两类verifier map及属性、hostile hash、unknown derived A2A、retryable integer、两类generation bool、两类AuthContext混淆、stream字符串alias和server auth引用替换；当前hardening专项 `18 passed`，原C1-1专项 `110 passed`，全量 `425 passed, 8 skipped`，8/8机器门禁通过；
 - 本修复只针对C1-1独立复审发现，不实现 Redis State、Task 状态机、11 操作业务语义或真实 NATS/JetStream 故障验收；因此不满足 C1 整体退出门禁，也不代表完整 A2A v1 兼容或生产就绪；
-- 第六代checkpoint、同树独立复审和提交后完整门禁完成前，状态保持 `candidate/pending-review`，不得写 `[verified]`。
+- 第七代checkpoint、同树独立复审和提交后完整门禁完成前，状态保持 `candidate/pending-review`，不得写 `[verified]`。
 
 ### 8.5 C1-2 当前模块：官方 TaskState 纯状态合同
 
