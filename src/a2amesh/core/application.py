@@ -459,14 +459,26 @@ async def dispatch_streaming(
         raise _invalid_response(f"{operation.value} handler must return an async iterator") from exc
     try:
         while True:
+            next_result: object | None = None
             try:
-                item = await next_method()
+                next_result = next_method()
+                if not inspect.isawaitable(next_result):
+                    raise TypeError("async iterator __anext__ returned a non-awaitable")
+                item = await next_result
             except StopAsyncIteration:
+                if next_result is not None:
+                    await _close_awaitable(next_result)
                 break
             except TypeError as exc:
+                if next_result is not None:
+                    await _close_awaitable(next_result)
                 raise _invalid_response(
                     f"{operation.value} iterator produced an invalid item"
                 ) from exc
+            except BaseException:
+                if next_result is not None:
+                    await _close_awaitable(next_result)
+                raise
             yield _validate_response(operation, spec, item)
     finally:
         await _close_async_iterator(iterator)

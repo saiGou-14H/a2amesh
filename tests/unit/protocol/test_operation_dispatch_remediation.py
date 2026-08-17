@@ -86,6 +86,36 @@ class BadAiter:
         self.closed = True
 
 
+class BadNextAwaitable:
+    def __init__(self, error: BaseException) -> None:
+        self.error = error
+        self.closed = False
+        self.inner = asyncio.sleep(3600)
+
+    def __await__(self):
+        raise self.error
+
+    def close(self) -> None:
+        self.closed = True
+
+
+class BadNextIterator:
+    def __init__(self, error: BaseException) -> None:
+        self.error = error
+        self.returned: BadNextAwaitable | None = None
+        self.closed = False
+
+    def __aiter__(self):
+        return self
+
+    def __anext__(self):
+        self.returned = BadNextAwaitable(self.error)
+        return self.returned
+
+    async def aclose(self) -> None:
+        self.closed = True
+
+
 @pytest.mark.asyncio
 async def test_async_close_result_is_awaited_during_cleanup() -> None:
     value = AsyncCloseAwaitable()
@@ -168,6 +198,39 @@ async def test_aiter_failure_closes_original_stream_and_preserves_runtime(
         with pytest.raises(RuntimeError, match="aiter runtime"):
             await anext(stream)
     assert value.closed is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "error",
+    [TypeError("bad next await"), RuntimeError("next await runtime")],
+)
+async def test_malformed_anext_awaitable_is_closed_with_its_wrapped_coroutine(
+    error: BaseException,
+) -> None:
+    value = BadNextIterator(error)
+
+    class Application:
+        def send_streaming_message(self, request, request_context):
+            del request, request_context
+            return value
+
+    stream = dispatch_streaming(
+        Application(),
+        Operation.SEND_STREAMING_MESSAGE,
+        protocol.SendMessageRequest(),
+        context(),
+    )
+    if isinstance(error, TypeError):
+        with pytest.raises(InvalidAgentResponseError):
+            await anext(stream)
+    else:
+        with pytest.raises(RuntimeError, match="next await runtime"):
+            await anext(stream)
+    assert value.closed is True
+    assert value.returned is not None
+    assert value.returned.closed is True
+    assert value.returned.inner.cr_frame is None
 
 
 def _valid_application() -> object:
