@@ -54,6 +54,30 @@ class AsyncCloseAwaitable:
         self.closed = True
 
 
+class MalformedCloseResult:
+    def __init__(self) -> None:
+        self.closed = False
+        self.inner = asyncio.sleep(3600)
+
+    def __await__(self):
+        raise RuntimeError("malformed close-result awaitable")
+
+    def close(self) -> None:
+        self.closed = True
+
+
+class NestedCloseAwaitable:
+    def __init__(self) -> None:
+        self.result: MalformedCloseResult | None = None
+
+    def __await__(self):
+        raise TypeError("malformed outer awaitable")
+
+    def close(self) -> MalformedCloseResult:
+        self.result = MalformedCloseResult()
+        return self.result
+
+
 class CancelRaisesFuture(asyncio.Future[object]):
     def cancel(self, msg: object = None) -> bool:
         del msg
@@ -208,6 +232,27 @@ async def test_async_close_result_is_awaited_during_cleanup() -> None:
             context(),
         )
     assert value.closed is True
+
+
+@pytest.mark.asyncio
+async def test_custom_close_result_and_its_wrapped_coroutine_are_closed() -> None:
+    value = NestedCloseAwaitable()
+
+    class Application:
+        def get_task(self, request, request_context):
+            del request, request_context
+            return value
+
+    with pytest.raises(InvalidAgentResponseError):
+        await dispatch_unary(
+            Application(),
+            Operation.GET_TASK,
+            protocol.GetTaskRequest(id="task-001"),
+            context(),
+        )
+    assert value.result is not None
+    assert value.result.closed is True
+    assert value.result.inner.cr_frame is None
 
 
 @pytest.mark.asyncio

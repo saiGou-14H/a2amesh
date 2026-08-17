@@ -311,6 +311,7 @@ def validate_application_contract(application: object) -> None:
 
 
 _CLEANUP_TIMEOUT_SECONDS = 0.05
+_MAX_CLEANUP_OBJECTS = 64
 
 
 def _safe_is_awaitable(value: object) -> bool:
@@ -417,7 +418,7 @@ async def _close_awaitable(value: object) -> None:
         "underlying",
         "_underlying",
     )
-    while pending:
+    while pending and len(seen) < _MAX_CLEANUP_OBJECTS:
         candidate = pending.pop()
         if id(candidate) in seen:
             continue
@@ -435,7 +436,9 @@ async def _close_awaitable(value: object) -> None:
                 closed = close()
             except BaseException:
                 closed = None
-            await _await_cleanup(closed)
+            if _safe_is_awaitable(closed):
+                await _await_cleanup(closed)
+                pending.append(closed)
         for attribute in wrapped_attributes:
             try:
                 nested = getattr(candidate, attribute, None)
@@ -486,10 +489,10 @@ async def dispatch_unary(
         result = handler(request, context)
     except TypeError as exc:
         raise _invalid_response(f"{operation.value} handler invocation is malformed") from exc
-    if not inspect.isawaitable(result):
+    if not _safe_is_awaitable(result):
         raise _invalid_response(f"{operation.value} handler must return an awaitable")
     try:
-        awaited = await result
+        awaited = await cast(Awaitable[object], result)
     except TypeError as exc:
         await _close_awaitable(result)
         raise _invalid_response(
@@ -553,7 +556,7 @@ async def dispatch_streaming(
                 next_result = next_method()
                 if not _safe_is_awaitable(next_result):
                     raise TypeError("async iterator __anext__ returned a non-awaitable")
-                item = await next_result
+                item = await cast(Awaitable[object], next_result)
             except StopAsyncIteration:
                 if next_result is not None:
                     await _close_awaitable(next_result)
