@@ -4,13 +4,24 @@ from __future__ import annotations
 
 import json
 import time
-from collections.abc import Mapping
-from dataclasses import asdict, dataclass
+from collections.abc import Collection, Mapping
+from dataclasses import asdict, dataclass, field
+from types import MappingProxyType
+from typing import ClassVar
 
 import nkeys
 
 from .nkey import nkey_public_key, sign_nkey, verify_nkey_signature
 from .principal import Principal
+
+
+def _freeze_string_claims(value: object, field_name: str) -> frozenset[str]:
+    if isinstance(value, (str, bytes)) or not isinstance(value, Collection):
+        raise ValueError(f"{field_name} must be a collection of strings")
+    items = list(value)
+    if not all(type(item) is str for item in items):
+        raise ValueError(f"{field_name} must be a collection of strings")
+    return frozenset(items)
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,6 +36,24 @@ class AuthContext:
     request_id: str
     target_agent_id: str
     alias_generation: int = 0
+
+    def __post_init__(self) -> None:
+        string_fields = (
+            self.principal_id,
+            self.method,
+            self.issuer,
+            self.subject,
+            self.request_id,
+            self.target_agent_id,
+        )
+        if any(type(value) is not str for value in string_fields):
+            raise ValueError("AuthContext string fields must be plain strings")
+        if self.credential_id is not None and type(self.credential_id) is not str:
+            raise ValueError("AuthContext credential_id must be a plain string or None")
+        if type(self.issued_at) is not int or type(self.expires_at) is not int:
+            raise ValueError("AuthContext timestamps must be plain integers")
+        if type(self.alias_generation) is not int or self.alias_generation < 0:
+            raise ValueError("alias_generation must be a non-negative integer")
 
     @classmethod
     def create(
@@ -70,14 +99,41 @@ class AuthProof:
     algorithm: str
     signature: str
 
+    def __post_init__(self) -> None:
+        if any(type(value) is not str for value in (self.signer, self.algorithm, self.signature)):
+            raise ValueError("AuthProof fields must be plain strings")
+
 
 @dataclass(frozen=True, slots=True)
 class SignerPolicy:
-    """Exact identities and claims one NKey signer may represent."""
+    """Exact claims and server-side Principal provenance one signer may represent."""
 
-    principal_ids: frozenset[str]
-    methods: frozenset[str]
-    subjects: frozenset[str]
+    principal_ids: Collection[str]
+    methods: Collection[str]
+    subjects: Collection[str]
+    principal_bindings: Mapping[str, Principal] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        principal_ids = _freeze_string_claims(self.principal_ids, "principal_ids")
+        methods = _freeze_string_claims(self.methods, "methods")
+        subjects = _freeze_string_claims(self.subjects, "subjects")
+        binding_items = list(self.principal_bindings.items())
+        if any(type(key) is not str for key, _ in binding_items):
+            raise ValueError("signer policy binding keys must be plain strings")
+        if any(type(value) is not Principal for _, value in binding_items):
+            raise ValueError("signer policy bindings must contain canonical Principals")
+        bindings = dict(binding_items)
+        if not principal_ids or set(bindings) != set(principal_ids):
+            raise ValueError(
+                "signer policy requires a complete principal binding for every principal_id"
+            )
+        for principal_id, principal in bindings.items():
+            if principal.id != principal_id:
+                raise ValueError("signer policy principal binding does not match its key")
+        object.__setattr__(self, "principal_ids", principal_ids)
+        object.__setattr__(self, "methods", methods)
+        object.__setattr__(self, "subjects", subjects)
+        object.__setattr__(self, "principal_bindings", MappingProxyType(bindings))
 
 
 def sign_auth_context(context: AuthContext, key_pair: nkeys.KeyPair) -> AuthProof:
@@ -88,8 +144,28 @@ def sign_auth_context(context: AuthContext, key_pair: nkeys.KeyPair) -> AuthProo
     )
 
 
+_AUTH_CONTEXT_VERIFIER_SEALED_FIELDS = frozenset(
+    {"_signer_policies", "clock_skew_seconds", "_sealed", "__class__"}
+)
+
+
 class AuthContextVerifier:
     """Verify signatures, expiry, target binding, and request replay."""
+
+    __slots__ = ("_signer_policies", "clock_skew_seconds", "_seen", "_sealed")
+    _SEALED_FIELDS: ClassVar[frozenset[str]] = frozenset(
+        {"_signer_policies", "clock_skew_seconds", "_sealed", "__class__"}
+    )
+
+    def __setattr__(self, name: str, value: object) -> None:
+        if getattr(self, "_sealed", False) and name in _AUTH_CONTEXT_VERIFIER_SEALED_FIELDS:
+            raise AttributeError("AuthContextVerifier configuration is immutable")
+        object.__setattr__(self, name, value)
+
+    def __delattr__(self, name: str) -> None:
+        if getattr(self, "_sealed", False) and name in _AUTH_CONTEXT_VERIFIER_SEALED_FIELDS:
+            raise AttributeError("AuthContextVerifier configuration is immutable")
+        object.__delattr__(self, name)
 
     def __init__(
         self,
@@ -99,9 +175,20 @@ class AuthContextVerifier:
     ) -> None:
         if not signer_policies:
             raise ValueError("at least one AuthContext signer policy is required")
-        self.signer_policies = dict(signer_policies)
+        policy_items = list(signer_policies.items())
+        if any(type(key) is not str for key, _ in policy_items):
+            raise ValueError("signer policy keys must be plain strings")
+        if any(type(value) is not SignerPolicy for _, value in policy_items):
+            raise ValueError("signer policy values must be SignerPolicy instances")
+        self._signer_policies = MappingProxyType(dict(policy_items))
         self.clock_skew_seconds = clock_skew_seconds
         self._seen: dict[str, int] = {}
+        self._sealed = True
+
+    @property
+    def signer_policies(self) -> Mapping[str, SignerPolicy]:
+        """Read-only server-owned policy snapshot."""
+        return self._signer_policies
 
     def verify(
         self,
@@ -111,13 +198,24 @@ class AuthContextVerifier:
         expected_target: str,
         now: int | None = None,
     ) -> Principal:
+        if type(context) is not AuthContext or type(proof) is not AuthProof:
+            raise ValueError("AuthContext and AuthProof types are invalid")
         current = int(time.time()) if now is None else now
         self._seen = {key: expiry for key, expiry in self._seen.items() if expiry >= current}
-        policy = self.signer_policies.get(proof.signer)
+        policy = self._signer_policies.get(proof.signer)
         if proof.algorithm != "nkey-ed25519" or policy is None:
             raise ValueError("untrusted AuthContext signer")
         if context.principal_id not in policy.principal_ids:
             raise ValueError("signer cannot represent this principal")
+        bound_principal = policy.principal_bindings.get(context.principal_id)
+        if bound_principal is None:
+            raise ValueError("signer has no principal binding")
+        if context.credential_id != bound_principal.credential_id:
+            raise ValueError("credential binding does not match signer policy")
+        if type(context.alias_generation) is not int or context.alias_generation < 0:
+            raise ValueError("alias generation must be a non-negative integer")
+        if context.alias_generation != bound_principal.alias_generation:
+            raise ValueError("alias generation binding does not match signer policy")
         if context.method not in policy.methods:
             raise ValueError("signer cannot use this authentication method")
         if context.subject not in policy.subjects:
@@ -141,10 +239,4 @@ class AuthContextVerifier:
         except ValueError as exc:
             raise ValueError("invalid AuthContext signature") from exc
         self._seen[context.request_id] = context.expires_at
-        kind = context.principal_id.split(":", 1)[0]
-        return Principal(
-            context.principal_id,
-            kind,
-            context.credential_id,
-            context.alias_generation,
-        )
+        return bound_principal

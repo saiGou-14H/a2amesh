@@ -51,6 +51,16 @@ _VALIDATOR = jsonschema.Draft202012Validator(
     format_checker=jsonschema.FormatChecker(),
 )
 
+
+def _plain_wire_string(data: dict[str, Any], field_name: str) -> str:
+    try:
+        value = data[field_name]
+    except (KeyError, TypeError) as exc:
+        raise BindingValidationError(f"{field_name} is required") from exc
+    if type(value) is not str:
+        raise BindingValidationError(f"{field_name} must be a plain string")
+    return value
+
 StreamControlPayload: TypeAlias = (
     StreamOpenRequestV1 | StreamAckRequestV1 | StreamCloseRequestV1
 )
@@ -78,28 +88,28 @@ class StreamControlEnvelopeV1:
     payload: StreamControlPayload
 
     def __post_init__(self) -> None:
+        if type(self.operation) is not StreamControlOperation:
+            raise BindingValidationError("invalid stream control operation")
         for name, value in (
             ("requestId", self.request_id),
             ("callerInstanceId", self.caller_instance_id),
             ("streamOpenId", self.stream_open_id),
         ):
-            if not isinstance(value, str) or not _SAFE_TOKEN.fullmatch(value):
+            if type(value) is not str or not _SAFE_TOKEN.fullmatch(value):
                 raise BindingValidationError(f"{name} is not a safe token")
         for name, value in (
             ("callerAgentId", self.caller_agent_id),
             ("targetAgentId", self.target_agent_id),
         ):
-            if not isinstance(value, str) or not _AGENT_ID.fullmatch(value):
+            if type(value) is not str or not _AGENT_ID.fullmatch(value):
                 raise BindingValidationError(f"{name} is invalid")
         if (
             type(self.config_generation) is not int
             or not 1 <= self.config_generation <= _JSON_SAFE_MAX
         ):
             raise BindingValidationError("configGeneration must be a positive safe integer")
-        if not isinstance(self.operation, StreamControlOperation):
-            raise BindingValidationError("invalid stream control operation")
         expected_payload_type = _PAYLOAD_TYPES[self.operation]
-        if not isinstance(self.payload, expected_payload_type):
+        if type(self.payload) is not expected_payload_type:
             raise BindingValidationError(
                 f"payload type for {self.operation.value} must be "
                 f"{expected_payload_type.__name__}"
@@ -112,13 +122,15 @@ class StreamControlEnvelopeV1:
                 raise BindingValidationError("outer and payload callerInstanceId mismatch")
             if open_payload.config_generation != self.config_generation:
                 raise BindingValidationError("outer and payload configGeneration mismatch")
-        if not isinstance(self.auth_context, AuthContext):
+        if type(self.auth_context) is not AuthContext:
             raise BindingValidationError("authContext must be AuthContext")
-        if not isinstance(self.auth_proof, AuthProof):
+        if type(self.auth_proof) is not AuthProof:
             raise BindingValidationError("authProof must be AuthProof")
-        if not isinstance(self.sent_at, datetime) or self.sent_at.tzinfo is None:
+        if type(self.reply_subject) is not str:
+            raise BindingValidationError("replySubject must be a plain string")
+        if type(self.sent_at) is not datetime or self.sent_at.tzinfo is None:
             raise BindingValidationError("sentAt must be timezone-aware")
-        if not isinstance(self.deadline_at, datetime) or self.deadline_at.tzinfo is None:
+        if type(self.deadline_at) is not datetime or self.deadline_at.tzinfo is None:
             raise BindingValidationError("deadlineAt must be timezone-aware")
         if self.deadline_at <= self.sent_at:
             raise BindingValidationError("deadlineAt must be later than sentAt")
@@ -174,6 +186,8 @@ class StreamControlEnvelopeV1:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> StreamControlEnvelopeV1:
+        _plain_wire_string(data, "bindingSchemaVersion")
+        _plain_wire_string(data, "operation")
         _validate_schema(data)
         try:
             operation = StreamControlOperation(data["operation"])
@@ -247,8 +261,23 @@ def sign_stream_control_envelope(
     )
 
 
+_STREAM_CONTROL_VERIFIER_SEALED_FIELDS = frozenset({"_common", "_sealed", "__class__"})
+
+
 class StreamControlAuthVerifier:
     """Authenticate a stream control envelope and bind it to its literal subject."""
+
+    __slots__ = ("_common", "_sealed")
+
+    def __setattr__(self, name: str, value: object) -> None:
+        if getattr(self, "_sealed", False) and name in _STREAM_CONTROL_VERIFIER_SEALED_FIELDS:
+            raise AttributeError("StreamControlAuthVerifier configuration is immutable")
+        object.__setattr__(self, name, value)
+
+    def __delattr__(self, name: str) -> None:
+        if getattr(self, "_sealed", False) and name in _STREAM_CONTROL_VERIFIER_SEALED_FIELDS:
+            raise AttributeError("StreamControlAuthVerifier configuration is immutable")
+        object.__delattr__(self, name)
 
     def __init__(
         self,
@@ -264,6 +293,7 @@ class StreamControlAuthVerifier:
             clock_skew_seconds=clock_skew_seconds,
             max_auth_lifetime_seconds=max_auth_lifetime_seconds,
         )
+        self._sealed = True
 
     async def verify(
         self,

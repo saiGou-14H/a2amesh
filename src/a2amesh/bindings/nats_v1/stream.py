@@ -55,6 +55,24 @@ _OPENED_VALIDATOR = jsonschema.Draft202012Validator(
 )
 
 
+def _copy_stream_response(value: ProtobufMessage) -> ProtobufMessage:
+    if type(value) is not protocol.StreamResponse:
+        raise BindingValidationError("canonicalStreamResponse must be official StreamResponse")
+    snapshot = protocol.StreamResponse()
+    snapshot.CopyFrom(value)
+    return snapshot
+
+
+def _plain_wire_string(data: dict[str, Any], field_name: str) -> str:
+    try:
+        value = data[field_name]
+    except (KeyError, TypeError) as exc:
+        raise BindingValidationError(f"{field_name} is required") from exc
+    if type(value) is not str:
+        raise BindingValidationError(f"{field_name} must be a plain string")
+    return value
+
+
 @dataclass(frozen=True, slots=True)
 class StreamSessionFrameV1:
     stream_session_id: str
@@ -66,11 +84,11 @@ class StreamSessionFrameV1:
     payload_digest: str
 
     def __post_init__(self) -> None:
-        if not isinstance(self.stream_session_id, str) or not _SAFE_TOKEN.fullmatch(
+        if type(self.stream_session_id) is not str or not _SAFE_TOKEN.fullmatch(
             self.stream_session_id
         ):
             raise BindingValidationError("streamSessionId is not a safe token")
-        if not isinstance(self.stream_open_id, str) or not _SAFE_TOKEN.fullmatch(
+        if type(self.stream_open_id) is not str or not _SAFE_TOKEN.fullmatch(
             self.stream_open_id
         ):
             raise BindingValidationError("streamOpenId is not a safe token")
@@ -86,13 +104,15 @@ class StreamSessionFrameV1:
             raise BindingValidationError("eventSeq is outside JSON safe integer range")
         if type(self.final) is not bool:
             raise BindingValidationError("final must be boolean")
-        if not isinstance(self.canonical_stream_response, protocol.StreamResponse):
+        if type(self.canonical_stream_response) is not protocol.StreamResponse:
             raise BindingValidationError("canonicalStreamResponse must be official StreamResponse")
-        if not isinstance(self.payload_digest, str) or not _DIGEST.fullmatch(
+        snapshot = _copy_stream_response(self.canonical_stream_response)
+        object.__setattr__(self, "canonical_stream_response", snapshot)
+        if type(self.payload_digest) is not str or not _DIGEST.fullmatch(
             self.payload_digest
         ):
             raise BindingValidationError("payloadDigest must be lowercase SHA-256 hex")
-        if self.payload_digest != self.compute_payload_digest():
+        if self.payload_digest != self._compute_payload_digest_unchecked():
             raise BindingValidationError("payloadDigest does not match canonical frame")
 
     @classmethod
@@ -106,13 +126,14 @@ class StreamSessionFrameV1:
         final: bool,
         canonical_stream_response: ProtobufMessage,
     ) -> StreamSessionFrameV1:
+        snapshot = _copy_stream_response(canonical_stream_response)
         core = _frame_core_dict(
             stream_session_id=stream_session_id,
             stream_open_id=stream_open_id,
             sequence=sequence,
             event_seq=event_seq,
             final=final,
-            canonical_stream_response=canonical_stream_response,
+            canonical_stream_response=snapshot,
         )
         return cls(
             stream_session_id=stream_session_id,
@@ -120,11 +141,15 @@ class StreamSessionFrameV1:
             sequence=sequence,
             event_seq=event_seq,
             final=final,
-            canonical_stream_response=canonical_stream_response,
+            canonical_stream_response=snapshot,
             payload_digest=_sha256_rfc8785(core),
         )
 
     def core_dict(self) -> dict[str, Any]:
+        self._assert_integrity()
+        return self._raw_core_dict()
+
+    def _raw_core_dict(self) -> dict[str, Any]:
         return _frame_core_dict(
             stream_session_id=self.stream_session_id,
             stream_open_id=self.stream_open_id,
@@ -135,7 +160,15 @@ class StreamSessionFrameV1:
         )
 
     def compute_payload_digest(self) -> str:
-        return _sha256_rfc8785(self.core_dict())
+        self._assert_integrity()
+        return self._compute_payload_digest_unchecked()
+
+    def _compute_payload_digest_unchecked(self) -> str:
+        return _sha256_rfc8785(self._raw_core_dict())
+
+    def _assert_integrity(self) -> None:
+        if self.payload_digest != self._compute_payload_digest_unchecked():
+            raise BindingValidationError("payloadDigest no longer matches canonical frame")
 
     def to_dict(self) -> dict[str, Any]:
         data = self.core_dict()
@@ -147,6 +180,9 @@ class StreamSessionFrameV1:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> StreamSessionFrameV1:
+        schema_version = _plain_wire_string(data, "schemaVersion")
+        if schema_version != STREAM_SCHEMA_VERSION:
+            raise BindingValidationError("unsupported stream frame schemaVersion")
         actual_fields = frozenset(data)
         if actual_fields != _FRAME_FIELDS:
             missing = sorted(_FRAME_FIELDS - actual_fields)
@@ -154,8 +190,6 @@ class StreamSessionFrameV1:
             raise BindingValidationError(
                 f"stream frame fields mismatch; missing={missing}, extra={extra}"
             )
-        if data["schemaVersion"] != STREAM_SCHEMA_VERSION:
-            raise BindingValidationError("unsupported stream frame schemaVersion")
         try:
             response = protocol.from_protojson(
                 data["canonicalStreamResponse"], protocol.StreamResponse
@@ -197,7 +231,7 @@ class StreamFrameCursorV1:
             ("streamOpenId", self.stream_open_id),
             ("taskId", self.task_id),
         ):
-            if not isinstance(value, str) or not _SAFE_TOKEN.fullmatch(value):
+            if type(value) is not str or not _SAFE_TOKEN.fullmatch(value):
                 raise BindingValidationError(f"{field_name} is not a safe token")
         for field_name, value in (
             ("snapshotEventSeq", self.snapshot_event_seq),
@@ -230,7 +264,7 @@ class StreamFrameCursorV1:
                 raise BindingValidationError(
                     "advanced cursor lastEventSeq must exceed snapshotEventSeq"
                 )
-            if not isinstance(self.last_payload_digest, str) or not _DIGEST.fullmatch(
+            if type(self.last_payload_digest) is not str or not _DIGEST.fullmatch(
                 self.last_payload_digest
             ):
                 raise BindingValidationError(
@@ -240,8 +274,9 @@ class StreamFrameCursorV1:
     def accept(
         self, frame: StreamSessionFrameV1
     ) -> tuple[StreamFrameCursorV1, StreamFrameDisposition]:
-        if not isinstance(frame, StreamSessionFrameV1):
+        if type(frame) is not StreamSessionFrameV1:
             raise BindingValidationError("live frame must be StreamSessionFrameV1")
+        frame._assert_integrity()
         if frame.stream_session_id != self.stream_session_id:
             raise BindingValidationError("live frame streamSessionId mismatch")
         if frame.stream_open_id != self.stream_open_id:
@@ -298,20 +333,20 @@ class StreamSessionOpenedV1:
     initial_frame: StreamSessionFrameV1
 
     def __post_init__(self) -> None:
-        if not isinstance(self.stream_session_id, str) or not _SAFE_TOKEN.fullmatch(
+        if type(self.stream_session_id) is not str or not _SAFE_TOKEN.fullmatch(
             self.stream_session_id
         ):
             raise BindingValidationError("streamSessionId is not a safe token")
-        if not isinstance(self.stream_open_id, str) or not _SAFE_TOKEN.fullmatch(
+        if type(self.stream_open_id) is not str or not _SAFE_TOKEN.fullmatch(
             self.stream_open_id
         ):
             raise BindingValidationError("streamOpenId is not a safe token")
-        if not isinstance(self.task_id, str) or not _SAFE_TOKEN.fullmatch(self.task_id):
+        if type(self.task_id) is not str or not _SAFE_TOKEN.fullmatch(self.task_id):
             raise BindingValidationError("taskId is not a safe token")
-        if not isinstance(self.operation, Operation) or self.operation not in _STREAMING_OPERATIONS:
+        if type(self.operation) is not Operation or self.operation not in _STREAMING_OPERATIONS:
             raise BindingValidationError("stream session operation must be streaming")
         if (
-            not isinstance(self.caller_delivery_subject, str)
+            type(self.caller_delivery_subject) is not str
             or not _DELIVERY_SUBJECT.fullmatch(self.caller_delivery_subject)
         ):
             raise BindingValidationError("callerDeliverySubject is invalid")
@@ -322,11 +357,12 @@ class StreamSessionOpenedV1:
             or not 0 <= self.snapshot_event_seq <= 9_007_199_254_740_991
         ):
             raise BindingValidationError("snapshotEventSeq is outside JSON safe integer range")
-        if not isinstance(self.expires_at, datetime) or self.expires_at.tzinfo is None:
+        if type(self.expires_at) is not datetime or self.expires_at.tzinfo is None:
             raise BindingValidationError("expiresAt must be timezone-aware")
-        if not isinstance(self.initial_frame, StreamSessionFrameV1):
+        if type(self.initial_frame) is not StreamSessionFrameV1:
             raise BindingValidationError("initialFrame must be StreamSessionFrameV1")
         frame = self.initial_frame
+        frame._assert_integrity()
         if frame.stream_session_id != self.stream_session_id:
             raise BindingValidationError("initialFrame streamSessionId mismatch")
         if frame.stream_open_id != self.stream_open_id:
@@ -364,12 +400,20 @@ class StreamSessionOpenedV1:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> StreamSessionOpenedV1:
+        schema_version = _plain_wire_string(data, "schemaVersion")
+        operation_value = _plain_wire_string(data, "operation")
+        initial_frame_data = data.get("initialFrame")
+        if not isinstance(initial_frame_data, dict):
+            raise BindingValidationError("initialFrame must be an object")
+        _plain_wire_string(initial_frame_data, "schemaVersion")
+        if schema_version != STREAM_SCHEMA_VERSION:
+            raise BindingValidationError("unsupported stream opened schemaVersion")
         _validate_opened_schema(data)
         expires_at = _parse_timestamp(data["expiresAt"])
         if _format_timestamp_ms(expires_at) != data["expiresAt"]:
             raise BindingValidationError("expiresAt must be canonical UTC milliseconds")
         try:
-            operation = Operation(data["operation"])
+            operation = Operation(operation_value)
         except ValueError as exc:
             raise BindingValidationError("unknown stream operation") from exc
         return cls(
@@ -455,6 +499,8 @@ def _format_timestamp_ms(value: datetime) -> str:
 
 
 def _parse_timestamp(value: str) -> datetime:
+    if type(value) is not str:
+        raise BindingValidationError("stream expiresAt timestamp must be a plain string")
     try:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError as exc:

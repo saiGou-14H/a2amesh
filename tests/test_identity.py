@@ -81,6 +81,11 @@ def test_signed_auth_context_binds_principal_target_expiry_and_request_id():
             principal_ids=frozenset({"agent:windows-a"}),
             methods=frozenset({"nats-nkey"}),
             subjects=frozenset({"windows-a"}),
+            principal_bindings={
+                "agent:windows-a": Principal(
+                    "agent:windows-a", "agent", signer, 0
+                )
+            },
         )
     }
     verifier = AuthContextVerifier(policies)

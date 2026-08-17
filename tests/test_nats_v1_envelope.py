@@ -98,6 +98,14 @@ def test_every_operation_accepts_only_its_official_request_type() -> None:
         envelope.__post_init__()
 
 
+def test_dynamic_request_rejects_boolean_config_generation() -> None:
+    envelope = envelope_for(Operation.GET_TASK)
+    object.__setattr__(envelope, "config_generation", True)
+
+    with pytest.raises(BindingValidationError, match="configGeneration"):
+        envelope.__post_init__()
+
+
 def test_stream_open_id_is_required_only_for_two_streaming_operations() -> None:
     with pytest.raises(BindingValidationError, match="streamOpenId is required"):
         object.__setattr__(

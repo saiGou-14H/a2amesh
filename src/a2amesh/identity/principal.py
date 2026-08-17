@@ -19,11 +19,17 @@ class Principal:
     alias_generation: int = 0
 
     def __post_init__(self) -> None:
-        if not _PRINCIPAL_RE.fullmatch(self.id):
-            raise ValueError(f"invalid canonical principal: {self.id!r}")
+        if type(self.id) is not str or not _PRINCIPAL_RE.fullmatch(self.id):
+            raise ValueError("invalid canonical principal id")
+        if type(self.kind) is not str:
+            raise ValueError("principal kind must be a string")
         prefix = self.id.split(":", 1)[0]
         if prefix != self.kind:
             raise ValueError("principal kind must match its ID prefix")
+        if self.credential_id is not None and type(self.credential_id) is not str:
+            raise ValueError("principal credential_id must be a plain string or None")
+        if type(self.alias_generation) is not int or self.alias_generation < 0:
+            raise ValueError("alias_generation must be a non-negative integer")
 
 
 def issuer_hash(issuer: str) -> str:

@@ -6,6 +6,7 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
+from types import MappingProxyType
 from typing import Protocol
 
 import nkeys
@@ -30,6 +31,17 @@ from .envelope import (
 AUTH_ALGORITHM = "nkey-ed25519"
 RPC_SUBJECT_PREFIX = "a2a.v1.rpc."
 _REPLY_PREFIX = re.compile(r"^_INBOX\.a2amesh\.[A-Za-z0-9_-]+\.$")
+_JSON_SAFE_MAX = 9_007_199_254_740_991
+_NATS_AUTH_VERIFIER_SEALED_FIELDS = frozenset(
+    {
+        "_signer_policies",
+        "_replay_guard",
+        "_clock_skew",
+        "_max_auth_lifetime",
+        "_sealed",
+        "__class__",
+    }
+)
 
 
 class SignedBindingEnvelope(Protocol):
@@ -133,6 +145,34 @@ def sign_request_envelope(
 class BindingAuthVerifier:
     """Fail-closed transport authentication before canonical Core dispatch."""
 
+    __slots__ = (
+        "_signer_policies",
+        "_replay_guard",
+        "_clock_skew",
+        "_max_auth_lifetime",
+        "_sealed",
+    )
+    _SEALED_FIELDS = frozenset(
+        {
+            "_signer_policies",
+            "_replay_guard",
+            "_clock_skew",
+            "_max_auth_lifetime",
+            "_sealed",
+            "__class__",
+        }
+    )
+
+    def __setattr__(self, name: str, value: object) -> None:
+        if getattr(self, "_sealed", False) and name in _NATS_AUTH_VERIFIER_SEALED_FIELDS:
+            raise AttributeError("BindingAuthVerifier configuration is immutable")
+        object.__setattr__(self, name, value)
+
+    def __delattr__(self, name: str) -> None:
+        if getattr(self, "_sealed", False) and name in _NATS_AUTH_VERIFIER_SEALED_FIELDS:
+            raise AttributeError("BindingAuthVerifier configuration is immutable")
+        object.__delattr__(self, name)
+
     def __init__(
         self,
         signer_policies: Mapping[str, SignerPolicy],
@@ -149,10 +189,16 @@ class BindingAuthVerifier:
             raise ValueError("clock skew cannot be negative")
         if not 1 <= max_auth_lifetime_seconds <= 900:
             raise ValueError("max AuthContext lifetime must be between 1 and 900 seconds")
-        self._signer_policies = dict(signer_policies)
+        policy_items = list(signer_policies.items())
+        if any(type(key) is not str for key, _ in policy_items):
+            raise ValueError("binding signer policy keys must be plain strings")
+        if any(type(value) is not SignerPolicy for _, value in policy_items):
+            raise ValueError("binding signer policy values must be SignerPolicy instances")
+        self._signer_policies = MappingProxyType(dict(policy_items))
         self._replay_guard = replay_guard
         self._clock_skew = timedelta(seconds=clock_skew_seconds)
         self._max_auth_lifetime = timedelta(seconds=max_auth_lifetime_seconds)
+        self._sealed = True
 
     async def verify(
         self,
@@ -167,6 +213,12 @@ class BindingAuthVerifier:
         active_config_generation: int,
         now: datetime | None = None,
     ) -> VerifiedBindingIdentity:
+        if type(active_config_generation) is not int or not (
+            1 <= active_config_generation <= _JSON_SAFE_MAX
+        ):
+            raise BindingValidationError(
+                "expected config generation must be a positive safe integer"
+            )
         return await self.verify_subject(
             envelope,
             received_subject=received_subject,
@@ -194,6 +246,12 @@ class BindingAuthVerifier:
         expected_config_generation: int,
         now: datetime | None = None,
     ) -> VerifiedBindingIdentity:
+        if type(expected_config_generation) is not int or not (
+            1 <= expected_config_generation <= _JSON_SAFE_MAX
+        ):
+            raise BindingValidationError(
+                "expected config generation must be a positive safe integer"
+            )
         current = datetime.now(UTC) if now is None else now
         if current.tzinfo is None:
             raise BindingValidationError("verification clock must be timezone-aware")
@@ -201,6 +259,8 @@ class BindingAuthVerifier:
 
         proof = envelope.auth_proof
         context = envelope.auth_context
+        if type(context) is not AuthContext or type(proof) is not AuthProof:
+            raise BindingValidationError("binding authContext/authProof type is invalid")
         policy = self._signer_policies.get(proof.signer)
         if proof.algorithm != AUTH_ALGORITHM or policy is None:
             raise BindingValidationError("untrusted binding signer")
@@ -210,6 +270,11 @@ class BindingAuthVerifier:
             raise BindingValidationError("AuthProof signer does not match NATS connection")
         if context.principal_id not in policy.principal_ids:
             raise BindingValidationError("signer cannot represent this principal")
+        bound_principal = policy.principal_bindings.get(context.principal_id)
+        if bound_principal is None:
+            raise BindingValidationError("signer has no principal binding")
+        if context.credential_id != bound_principal.credential_id:
+            raise BindingValidationError("credential binding does not match signer policy")
         if context.method not in policy.methods:
             raise BindingValidationError("signer cannot use this authentication method")
         if context.subject not in policy.subjects:
@@ -261,11 +326,7 @@ class BindingAuthVerifier:
             raise BindingValidationError("binding request replay detected")
 
         return VerifiedBindingIdentity(
-            principal=Principal(
-                context.principal_id,
-                context.principal_id.split(":", 1)[0],
-                credential_id=context.credential_id,
-            ),
+            principal=bound_principal,
             signer=proof.signer,
             request_id=envelope.request_id,
         )

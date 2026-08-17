@@ -73,6 +73,16 @@ def test_all_unary_operations_accept_only_their_official_response_type() -> None
         )
 
 
+def test_response_rejects_boolean_config_generation() -> None:
+    with pytest.raises(BindingValidationError, match="configGeneration"):
+        BindingResponseEnvelope(
+            operation=Operation.GET_TASK,
+            request_id="req-response-001",
+            config_generation=True,
+            payload=OPERATION_SPECS[Operation.GET_TASK].response_type(),
+        )
+
+
 def test_streaming_success_cannot_use_one_shot_payload() -> None:
     for operation in STREAMING:
         with pytest.raises(BindingValidationError, match="StreamSessionOpenedV1"):

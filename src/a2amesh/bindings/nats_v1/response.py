@@ -42,6 +42,12 @@ class BindingError:
     retryable: bool
 
     def __post_init__(self) -> None:
+        if type(self.type) is not str:
+            raise BindingValidationError("error.type must be a plain string")
+        if type(self.message) is not str:
+            raise BindingValidationError("error.message must be a plain string")
+        if type(self.retryable) is not bool:
+            raise BindingValidationError("error.retryable must be boolean")
         if not re.fullmatch(r"^[A-Za-z][A-Za-z0-9_]{0,127}$", self.type):
             raise BindingValidationError("error.type is invalid")
         if not self.message or len(self.message) > 4096:
@@ -66,9 +72,17 @@ class BindingResponseEnvelope:
     error: BindingError | None = None
 
     def __post_init__(self) -> None:
+        if type(self.operation) is not Operation:
+            raise BindingValidationError("operation must be an official Operation")
+        if type(self.request_id) is not str:
+            raise BindingValidationError("requestId must be a plain string")
+        if self.error is not None and type(self.error) is not BindingError:
+            raise BindingValidationError("error must be the NATS binding BindingError")
         if not _SAFE_TOKEN.fullmatch(self.request_id):
             raise BindingValidationError("requestId is not a safe token")
-        if not 1 <= self.config_generation <= 9_007_199_254_740_991:
+        if type(self.config_generation) is not int or not (
+            1 <= self.config_generation <= 9_007_199_254_740_991
+        ):
             raise BindingValidationError("configGeneration is outside JSON safe integer range")
         if (self.payload is None) == (self.error is None):
             raise BindingValidationError("response must contain exactly one of payload or error")
@@ -79,7 +93,7 @@ class BindingResponseEnvelope:
                 "streaming success must use StreamSessionOpenedV1, not a one-shot payload"
             )
         expected_type = OPERATION_SPECS[self.operation].response_type
-        if not isinstance(self.payload, expected_type):
+        if type(self.payload) is not expected_type:
             raise BindingValidationError(
                 f"response payload for {self.operation.value} must be {expected_type.__name__}"
             )

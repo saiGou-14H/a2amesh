@@ -8,7 +8,7 @@ import nacl.signing
 import nkeys
 import pytest
 
-from a2amesh.identity import SignerPolicy, nkey_public_key
+from a2amesh.identity import Principal, SignerPolicy, nkey_public_key
 from a2amesh.runtime import V1PeerRuntime, V1PeerRuntimeState
 
 
@@ -68,6 +68,9 @@ def runtime(connection: RecordingConnection) -> V1PeerRuntime:
                 principal_ids=frozenset({"agent:caller"}),
                 methods=frozenset({"nats-nkey"}),
                 subjects=frozenset({"caller"}),
+                principal_bindings={
+                    "agent:caller": Principal("agent:caller", "agent", "caller-key", 0)
+                },
             )
         },
         replay_guard=ReplayGuard(),
@@ -118,6 +121,9 @@ def test_peer_runtime_rejects_direct_unprotected_application_core() -> None:
                     principal_ids=frozenset({"agent:caller"}),
                     methods=frozenset({"nats-nkey"}),
                     subjects=frozenset({"caller"}),
+                    principal_bindings={
+                        "agent:caller": Principal("agent:caller", "agent", "caller-key", 0)
+                    },
                 )
             },
             replay_guard=ReplayGuard(),
