@@ -442,7 +442,7 @@ tests/unit/protocol/
 
 ### 8.6 C1-3 当前模块：11 操作 transport-independent dispatch contract
 
-截至 2026-08-17 14:55（Asia/Shanghai），C1-3 第一版 `713c171`、第二代 `c4ba60a` 和第三代 `134a989` 的独立复审/追加对抗复审均为 `BLOCKED`；第四代 `bb47752` 的复审因provider HTTP 503没有产生verdict，且已知第三代复审遗留的owner/cleanup/validator/NATS/error边界仍适用于该树；第五代候选继续整改：
+截至 2026-08-17 15:38（Asia/Shanghai），C1-3 第一版 `713c171`、第二代 `c4ba60a` 和第三代 `134a989` 的独立复审/追加对抗复审均为 `BLOCKED`；第四代 `bb47752` 复审因provider HTTP 503无verdict，第五代/第六代分别补齐dispatch与`aclose`递归cleanup；第六代QA又发现response schema末尾LF和malformed exact error fallback两个P2，已进入第七代：
 
 - Core 使用唯一 `OPERATION_SPECS` 解析 operation，并对 11 个官方 request/response protobuf 使用 `type(value) is expected_type`；空 tenant、canonical context、handler 存在性和 unary/streaming 模态均在统一入口校验；
 - request/tenant 结构校验先于 canonical context 校验；`CanonicalRequestContext.config_generation` 使用严格 exact-int；错误消息统一有界、可打印、固定fallback，不把超长动态类型名带入官方错误；
@@ -452,9 +452,10 @@ tests/unit/protocol/
 - 第五代补齐不同owner与returned iterator的双重关闭、missing/invalid `__aiter__`的固定映射；cleanup对Future cancel失败使用base fallback，对异步close使用独立future和50ms有界等待，close/`aclose`返回的custom awaitable继续进入同一资源图并以64节点封顶；父任务取消不被吞掉，次级异常不覆盖主异常；
 - `validate_application_contract` 使用`get_type_hints/get_origin/get_args`结构化解析`Annotated`、Union、Awaitable/Coroutine及AsyncIterator/Iterable/Generator，递归支持`functools.partial`与callable object，并以真实async/asyncgen函数种类优先，拒绝unary async-generator和streaming coroutine伪annotation；
 - 相邻活动NATS `BindingAuthVerifier`在policy/signature/replay前对expected/active/envelope generation执行exact safe-int；`BindingError`及wire schema拒绝控制字符，`BindingRemoteError`对旧/伪造error对象执行固定二级fallback；
-- 新增独立硬编码11-operation registry matrix，及伪造protobuf、malformed awaitable/iterator/`__anext__`/custom-close/`aclose`返回值、distinct owner、bounded cleanup、aiter建立、校验顺序、bool generation、错误控制字符、validator误判/误拒和NATS边界负例；当前第五代Core focused `62 passed`、NATS/response专项 `73 passed`、全量 `444 passed, 8 skipped`、8/8机器门禁与Ruff通过；
+- 第六代QA新增确认：response schema的`^[^...]$`末尾`$`允许terminal LF，且`BindingRemoteError`对`retryable=1`或未初始化exact `BindingError`可能泄漏/抛异常；第七代改用无锚点forbidden-character `not.pattern`，并在单一fallback try中校验type/message/retryable及属性读取异常；
+- 新增独立硬编码11-operation registry matrix，及伪造protobuf、malformed awaitable/iterator/`__anext__`/custom-close/`aclose`返回值、distinct owner、bounded cleanup、aiter建立、校验顺序、bool generation、错误控制字符、validator误判/误拒和NATS边界负例；当前第七代Core focused `64 passed`、NATS/response专项 `73 passed`、全量 `446 passed, 8 skipped`、8/8机器门禁与Ruff通过；
 - 本模块只针对transport-independent dispatch contract，不实现业务Task持久化、capability实现、version/lease/fencing、Redis CAS、真实stream broker或完整A2A生产互操作；不能宣称C1整体完成或生产就绪；
-- 第五代checkpoint、独立复审和提交后完整门禁完成前保持 `candidate/pending-review`，不得写 `[verified]`。
+- 第七代checkpoint、独立复审和提交后完整门禁完成前保持 `candidate/pending-review`，不得写 `[verified]`。
 
 ### 8.7 退出门禁（C1 整体）
 

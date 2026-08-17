@@ -54,17 +54,22 @@ class BindingRemoteError(BindingTransportError):
     """A valid v1 response carried a structured application/binding error."""
 
     def __init__(self, error: BindingError):
-        if (
-            type(error) is BindingError
-            and type(error.type) is str
-            and re.fullmatch(r"^[A-Za-z][A-Za-z0-9_]{0,127}$", error.type)
-            and _is_safe_error_message(error.message)
-        ):
-            error_type = error.type
-            message = error.message
-        else:
-            error_type = "InternalError"
-            message = "remote error message was invalid"
+        error_type = "InternalError"
+        message = "remote error message was invalid"
+        try:
+            candidate_type = error.type if type(error) is BindingError else None
+            candidate_message = error.message if type(error) is BindingError else None
+            candidate_retryable = error.retryable if type(error) is BindingError else None
+            if (
+                type(candidate_type) is str
+                and re.fullmatch(r"^[A-Za-z][A-Za-z0-9_]{0,127}$", candidate_type)
+                and _is_safe_error_message(candidate_message)
+                and type(candidate_retryable) is bool
+            ):
+                error_type = candidate_type
+                message = candidate_message
+        except BaseException as exc:
+            del exc
         super().__init__(f"{error_type}: {message}")
         self.error = error
 

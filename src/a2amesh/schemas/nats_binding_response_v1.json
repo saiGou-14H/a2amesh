@@ -36,7 +36,11 @@
         },
         "message": {
           "type": "string",
-          "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\\u2028\\u2029]{1,4096}$"
+          "minLength": 1,
+          "maxLength": 4096,
+          "not": {
+            "pattern": "[\\u0000-\\u001F\\u007F-\\u009F\\u2028\\u2029]"
+          }
         },
         "retryable": {"type": "boolean"}
       }

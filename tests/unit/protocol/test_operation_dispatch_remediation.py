@@ -15,7 +15,11 @@ from a2a.utils.errors import InvalidAgentResponseError, InvalidParamsError
 
 from a2amesh import protocol
 from a2amesh.bindings.nats_v1.envelope import BindingRequestEnvelope, BindingValidationError
-from a2amesh.bindings.nats_v1.response import BindingError, BindingResponseEnvelope
+from a2amesh.bindings.nats_v1.response import (
+    _RESPONSE_VALIDATOR,
+    BindingError,
+    BindingResponseEnvelope,
+)
 from a2amesh.bindings.nats_v1.transport import (
     BindingRemoteError,
     _safe_a2a_error_fields,
@@ -659,6 +663,32 @@ def test_remote_error_sanitizes_a_forged_legacy_error_object() -> None:
     assert "FORGED-LOG" not in rendered
     assert "\\n" not in rendered
     assert "\\x00" not in rendered
+
+
+def test_response_schema_rejects_terminal_control_character() -> None:
+    valid = BindingResponseEnvelope(
+        operation=Operation.GET_TASK,
+        request_id="response-001",
+        config_generation=1,
+        error=BindingError("InternalError", "safe", False),
+    ).to_dict()
+    valid["error"]["message"] = "safe-prefix\n"
+    assert list(_RESPONSE_VALIDATOR.iter_errors(valid))
+
+
+def test_remote_error_fallback_is_total_for_malformed_exact_objects() -> None:
+    forged_retryable = object.__new__(BindingError)
+    object.__setattr__(forged_retryable, "type", "InternalError")
+    object.__setattr__(forged_retryable, "message", "safe")
+    object.__setattr__(forged_retryable, "retryable", 1)
+    assert str(BindingRemoteError(forged_retryable)) == (
+        "InternalError: remote error message was invalid"
+    )
+
+    uninitialized = object.__new__(BindingError)
+    assert str(BindingRemoteError(uninitialized)) == (
+        "InternalError: remote error message was invalid"
+    )
 
 
 def test_transport_error_mappers_never_stringify_or_hash_hostile_values() -> None:
