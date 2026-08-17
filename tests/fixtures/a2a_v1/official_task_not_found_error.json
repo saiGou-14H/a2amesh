@@ -1,7 +1,14 @@
 {
   "code": -32001,
   "message": "Task not found",
-  "data": {
-    "taskId": "task-missing-fixture"
-  }
+  "data": [
+    {
+      "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+      "domain": "a2a-protocol.org",
+      "metadata": {
+        "taskId": "task-missing-fixture"
+      },
+      "reason": "TASK_NOT_FOUND"
+    }
+  ]
 }

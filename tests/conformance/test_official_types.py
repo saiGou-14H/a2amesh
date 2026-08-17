@@ -13,7 +13,8 @@ from types import ModuleType
 import pytest
 from a2a import types as a2a_types
 from a2a.server.jsonrpc_models import JSONRPCError
-from a2a.utils.errors import A2A_REASON_TO_ERROR, JSON_RPC_ERROR_CODE_MAP
+from a2a.server.request_handlers import build_error_response
+from a2a.utils.errors import A2A_REASON_TO_ERROR, JSON_RPC_ERROR_CODE_MAP, TaskNotFoundError
 from google.protobuf.json_format import MessageToDict, ParseDict, ParseError
 from google.protobuf.message import Message as ProtobufMessage
 
@@ -115,6 +116,20 @@ def test_official_task_not_found_error_fixture_matches_sdk_mapping() -> None:
     assert parsed.model_dump(mode="json", exclude_none=True) == payload
     error_type = A2A_REASON_TO_ERROR[entry["reason"]]
     assert JSON_RPC_ERROR_CODE_MAP[error_type] == payload["code"]
+    expected = build_error_response(
+        "fixture-request",
+        TaskNotFoundError(data={"taskId": "task-missing-fixture"}),
+    )["error"]
+    assert payload == expected
+
+
+def test_official_message_fixture_preserves_semantic_fields() -> None:
+    payload = json.loads((FIXTURES / "message_user_text.json").read_text(encoding="utf-8"))
+    message = ParseDict(payload, a2a_types.Message(), ignore_unknown_fields=False)
+    assert message.message_id == "msg-fixture-001"
+    assert message.role == a2a_types.Role.ROLE_USER
+    assert len(message.parts) == 1
+    assert message.parts[0].text == "hello from official A2A"
 
 
 def test_fixture_verifier_checks_every_manifest_entry() -> None:
@@ -158,6 +173,65 @@ def test_fixture_verifier_rejects_symlinked_fixture(tmp_path: Path) -> None:
         path.symlink_to("official_artifact_text.json")
     except OSError as exc:
         pytest.skip(f"symlink unavailable: {exc}")
+    assert verifier.main([str(copied)]) == 1
+
+
+def test_fixture_verifier_rejects_task_not_found_wire_mutation(tmp_path: Path) -> None:
+    verifier = _load_verifier()
+    copied = tmp_path / "fixtures"
+    shutil.copytree(FIXTURES, copied)
+    path = copied / "official_task_not_found_error.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["message"] = "mutated"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    assert verifier.main([str(copied)]) == 1
+
+
+def test_fixture_verifier_rejects_manifest_symlink(tmp_path: Path) -> None:
+    if os.name == "nt":
+        pytest.skip("symlink fixture requires POSIX test permissions")
+    verifier = _load_verifier()
+    copied = tmp_path / "fixtures"
+    shutil.copytree(FIXTURES, copied)
+    manifest = copied / "official_fixture_manifest.json"
+    outside = tmp_path / "manifest.json"
+    shutil.copy2(manifest, outside)
+    manifest.unlink()
+    try:
+        manifest.symlink_to(outside)
+    except OSError as exc:
+        pytest.skip(f"symlink unavailable: {exc}")
+    assert verifier.main([str(copied)]) == 1
+
+
+def test_fixture_verifier_rejects_duplicate_json_keys(tmp_path: Path) -> None:
+    verifier = _load_verifier()
+    copied = tmp_path / "fixtures"
+    shutil.copytree(FIXTURES, copied)
+
+    manifest = copied / "official_fixture_manifest.json"
+    manifest_text = manifest.read_text(encoding="utf-8")
+    manifest.write_text(
+        manifest_text.replace(
+            '"sdkVersion": "1.1.2"',
+            '"sdkVersion": "1.1.2", "sdkVersion": "1.1.2"',
+            1,
+        ),
+        encoding="utf-8",
+    )
+    assert verifier.main([str(copied)]) == 1
+    manifest.write_text(manifest_text, encoding="utf-8")
+
+    payload = copied / "official_agent_card.json"
+    payload_text = payload.read_text(encoding="utf-8")
+    payload.write_text(
+        payload_text.replace(
+            '"name": "A2AMesh Fixture Agent"',
+            '"name": "A2AMesh Fixture Agent", "name": "A2AMesh Fixture Agent"',
+            1,
+        ),
+        encoding="utf-8",
+    )
     assert verifier.main([str(copied)]) == 1
 
 

@@ -12,7 +12,8 @@ from typing import Any
 
 from a2a import types as a2a_types
 from a2a.server.jsonrpc_models import JSONRPCError
-from a2a.utils.errors import A2A_REASON_TO_ERROR, JSON_RPC_ERROR_CODE_MAP
+from a2a.server.request_handlers import build_error_response
+from a2a.utils.errors import A2A_REASON_TO_ERROR, JSON_RPC_ERROR_CODE_MAP, TaskNotFoundError
 from google.protobuf.json_format import Error as ProtoJsonError
 from google.protobuf.json_format import MessageToDict, ParseDict
 
@@ -65,6 +66,7 @@ _EXPECTED_FIXTURES: dict[str, dict[str, str]] = {
         "reason": "TASK_NOT_FOUND",
     },
 }
+_TASK_NOT_FOUND_FIXTURE_ID = "task-missing-fixture"
 
 
 class FixtureVerificationError(ValueError):
@@ -134,12 +136,21 @@ def _verify_jsonrpc_error(entry: dict[str, Any], payload: dict[str, Any]) -> Non
         JSON_RPC_ERROR_CODE_MAP[error_type] == payload["code"],
         f"error code does not match SDK reason mapping: {entry['file']}",
     )
+    if reason == "TASK_NOT_FOUND":
+        expected = build_error_response(
+            "fixture-request",
+            TaskNotFoundError(data={"taskId": _TASK_NOT_FOUND_FIXTURE_ID}),
+        )["error"]
+        _require(
+            payload == expected,
+            f"TaskNotFound fixture does not match SDK error wire shape: {entry['file']}",
+        )
 
 
 def verify_fixtures(fixtures_dir: Path) -> int:
     """Verify every fixture listed in the pinned manifest and return its count."""
     fixtures_dir = fixtures_dir.resolve()
-    manifest = _read_json(fixtures_dir / _MANIFEST_NAME)
+    manifest = _read_json(_fixture_path(fixtures_dir, _MANIFEST_NAME))
     _require(set(manifest) == _MANIFEST_KEYS, "official fixture manifest fields must be exact")
     _require(manifest["schemaVersion"] == "1", "unsupported fixture manifest schema")
     _require(manifest["specVersion"] == "1.0.1", "A2A spec version must be 1.0.1")
