@@ -2,87 +2,81 @@
 
 from importlib import import_module
 
-from .dispatch import (
-    DispatchContractError,
-    DispatchIntent,
-    DispatchIntentState,
-    accept_dispatch,
-    claim_dispatch,
-    create_dispatch_intent,
-    mark_dispatch_sent,
-    reclaim_dispatch,
-)
-from .lease import LeaseContractError, LeaseGrant, renew_lease, validate_lease_write
-from .outbox import (
-    OutboxContractError,
-    OutboxEvent,
-    OutboxState,
-    append_event,
-    claim_event,
-    create_outbox_event,
-    mark_published,
-    next_publishable,
-)
-from .reconciliation import (
-    ReconciliationClaimOperation,
-    ReconciliationDueKind,
-    SystemClaimIdentity,
-    reconciliation_claim_operation_id,
-    reconciliation_claim_scope_bytes,
-    reconciliation_due_operation_id,
-    reconciliation_due_operation_preimage,
-    system_claim_identity,
-)
-from .task import (
-    TaskAggregate,
-    TaskClaimDecision,
-    TaskClaimKey,
-    TaskClaimOutcome,
-    TaskContractError,
-    evaluate_claim,
-)
-
-_ARTIFACT_EXPORTS = frozenset(
-    {
-        "ARTIFACT_HOLD_CANDIDATE_LEASE_MAX_MS",
-        "ArtifactHoldExpiryCandidate",
-        "ArtifactHoldExpiryCandidateLedgerEntry",
-        "ArtifactHoldExpiryCASState",
-        "ArtifactHoldExpiryCommit",
-        "ArtifactHoldExpiryConflict",
-        "ArtifactHoldExpiryEventRecord",
-        "ArtifactHoldExpiryEventSink",
-        "ArtifactHoldExpiryLedgerState",
-        "ArtifactHoldExpiryOperation",
-        "ArtifactHoldExpiryReplayClaimRequest",
-        "ArtifactHoldExpiryReplayClaimResult",
-        "ArtifactHoldExpiryReplayCurrentAuthority",
-        "ArtifactHoldExpiryRequest",
-        "ArtifactHoldExpiryResult",
-        "ArtifactHoldExpiryScanAuthority",
-        "ArtifactHoldExpiryScanRequest",
-        "ArtifactHoldExpiryScanResult",
-        "ArtifactHoldState",
-        "ArtifactHoldStatus",
-        "ArtifactLifecycleStatus",
-        "apply_artifact_hold_expiry",
-        "apply_artifact_hold_expiry_replay_claim",
-        "apply_artifact_hold_expiry_scan",
-        "artifact_hold_expiry_operation_id",
-        "artifact_hold_expiry_preimage",
-        "artifact_hold_expiry_replay_claim_operation_id",
-        "artifact_hold_expiry_request_digest",
-    }
-)
+_EXPORT_MODULES = {
+    "DispatchContractError": ".dispatch",
+    "DispatchIntent": ".dispatch",
+    "DispatchIntentState": ".dispatch",
+    "accept_dispatch": ".dispatch",
+    "claim_dispatch": ".dispatch",
+    "create_dispatch_intent": ".dispatch",
+    "mark_dispatch_sent": ".dispatch",
+    "reclaim_dispatch": ".dispatch",
+    "LeaseContractError": ".lease",
+    "LeaseGrant": ".lease",
+    "renew_lease": ".lease",
+    "validate_lease_write": ".lease",
+    "OutboxContractError": ".outbox",
+    "OutboxEvent": ".outbox",
+    "OutboxState": ".outbox",
+    "append_event": ".outbox",
+    "claim_event": ".outbox",
+    "create_outbox_event": ".outbox",
+    "mark_published": ".outbox",
+    "next_publishable": ".outbox",
+    "ReconciliationClaimOperation": ".reconciliation",
+    "ReconciliationDueKind": ".reconciliation",
+    "SystemClaimIdentity": ".reconciliation",
+    "reconciliation_claim_operation_id": ".reconciliation",
+    "reconciliation_claim_scope_bytes": ".reconciliation",
+    "reconciliation_due_operation_id": ".reconciliation",
+    "reconciliation_due_operation_preimage": ".reconciliation",
+    "system_claim_identity": ".reconciliation",
+    "TaskAggregate": ".task",
+    "TaskClaimDecision": ".task",
+    "TaskClaimKey": ".task",
+    "TaskClaimOutcome": ".task",
+    "TaskContractError": ".task",
+    "evaluate_claim": ".task",
+    "ARTIFACT_HOLD_CANDIDATE_LEASE_MAX_MS": ".artifact_hold",
+    "ArtifactHoldExpiryCandidate": ".artifact_hold",
+    "ArtifactHoldExpiryCandidateLedgerEntry": ".artifact_hold",
+    "ArtifactHoldExpiryCASState": ".artifact_hold",
+    "ArtifactHoldExpiryCommit": ".artifact_hold",
+    "ArtifactHoldExpiryConflict": ".artifact_hold",
+    "ArtifactHoldExpiryEventRecord": ".artifact_hold",
+    "ArtifactHoldExpiryEventSink": ".artifact_hold",
+    "ArtifactHoldExpiryLedgerState": ".artifact_hold",
+    "ArtifactHoldExpiryOperation": ".artifact_hold",
+    "ArtifactHoldExpiryReplayClaimRequest": ".artifact_hold",
+    "ArtifactHoldExpiryReplayClaimResult": ".artifact_hold",
+    "ArtifactHoldExpiryReplayCurrentAuthority": ".artifact_hold",
+    "ArtifactHoldExpiryRequest": ".artifact_hold",
+    "ArtifactHoldExpiryResult": ".artifact_hold",
+    "ArtifactHoldExpiryScanAuthority": ".artifact_hold",
+    "ArtifactHoldExpiryScanRequest": ".artifact_hold",
+    "ArtifactHoldExpiryScanResult": ".artifact_hold",
+    "ArtifactHoldState": ".artifact_hold",
+    "ArtifactHoldStatus": ".artifact_hold",
+    "ArtifactLifecycleStatus": ".artifact_hold",
+    "apply_artifact_hold_expiry": ".artifact_hold",
+    "apply_artifact_hold_expiry_replay_claim": ".artifact_hold",
+    "apply_artifact_hold_expiry_scan": ".artifact_hold",
+    "artifact_hold_expiry_operation_id": ".artifact_hold",
+    "artifact_hold_expiry_preimage": ".artifact_hold",
+    "artifact_hold_expiry_replay_claim_operation_id": ".artifact_hold",
+    "artifact_hold_expiry_request_digest": ".artifact_hold",
+}
 
 
-def __getattr__(name: str):
-    if name in _ARTIFACT_EXPORTS:
-        module = import_module(".artifact_hold", __name__)
-        value = getattr(module, name)
-        globals()[name] = value
-        return value
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+def __getattr__(name: str) -> object:
+    module_name = _EXPORT_MODULES.get(name)
+    if module_name is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    module = import_module(module_name, __name__)
+    value = getattr(module, name)
+    globals()[name] = value
+    return value
+
 
 __all__ = [
     "DispatchContractError",

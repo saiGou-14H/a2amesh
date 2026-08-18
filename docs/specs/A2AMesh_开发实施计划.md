@@ -513,6 +513,8 @@ tests/unit/protocol/
 
 截至 2026-08-19 00:15（Asia/Shanghai），outbox-fix2复审发现自洽重哈希可绕过outbox/task/lease语义不变量、损坏enum/sequence可泄漏原生异常、终态重放可越过lease，以及state_contracts facade传递artifact_hold的secrets；outbox-fix3补充可重复semantic validators、全量入口total校验、终态lease边界与artifact惰性导出，新增回归后全量`537 passed, 8 skipped`、8/8，待checkpoint/独立复审。
 
+截至 2026-08-19 00:34（Asia/Shanghai），fix3复审发现facade直接加载官方SDK传递的`random`；outbox-fix4将全部state_contracts符号改为lazy module map，fresh direct import不再加载`random/datetime/socket/secrets`，显式artifact/star export兼容，新增严格probe与全量`537 passed, 8 skipped`、8/8，待checkpoint/独立复审。
+
 ### 9.3 顺序
 
 1. Redis config 和 async client。
