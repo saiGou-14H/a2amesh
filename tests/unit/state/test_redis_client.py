@@ -180,6 +180,7 @@ async def test_close_failure_and_cancellation_retain_pool_for_retry() -> None:
         await client.close()
     assert raised.value.__cause__ is None
     assert pool.close_calls == 1
+    assert client._pool is pool
     pool.close_error = None
     await client.close()
     assert pool.close_calls == 2
@@ -192,6 +193,7 @@ async def test_close_failure_and_cancellation_retain_pool_for_retry() -> None:
     await cancelled.connect()
     with pytest.raises(asyncio.CancelledError):
         await cancelled.close()
+    assert cancelled._pool is cancelled_pool
     await cancelled.close()
     assert cancelled_pool.close_calls == 2
     assert cancelled_pool.closed is True
@@ -209,6 +211,7 @@ async def test_connect_cleanup_failure_preserves_primary_error_and_pool_ownershi
         await client.connect()
     assert raised.value.__cause__ is None
     assert raised.value.__context__ is None
+    assert client._pool is pool
     rendered = "".join(
         traceback.format_exception(
             type(raised.value), raised.value, raised.value.__traceback__
@@ -249,6 +252,7 @@ async def test_connect_cancellation_survives_cleanup_failure_and_retains_pool() 
     with pytest.raises(asyncio.CancelledError):
         await client.connect()
     assert client.connected is False
+    assert client._pool is pool
     assert pool.close_calls == 1
     pool.close_error = None
     await client.close()

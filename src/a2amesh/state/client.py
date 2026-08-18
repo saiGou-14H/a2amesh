@@ -48,7 +48,7 @@ class RedisClient:
         self.config = config
         self._redis_factory = redis_factory
         self._pool: _RedisPool | None = None
-        self._cleanup_pool: _RedisPool | None = None
+        self._pool_ready = False
         self._lock = asyncio.Lock()
         self._closed = False
 
@@ -56,21 +56,21 @@ class RedisClient:
     def connected(self) -> bool:
         """Whether a healthy pool has been published to this client."""
 
-        return self._pool is not None and not self._closed
+        return self._pool is not None and self._pool_ready and not self._closed
 
     async def connect(self) -> None:
         """Create and health-check the pool exactly once."""
 
         if self._closed:
             raise RedisClientError("Redis client is closed")
-        if self._pool is not None:
+        if self._pool is not None and self._pool_ready:
             return
         async with self._lock:
             if self._closed:
                 raise RedisClientError("Redis client is closed")
-            if self._pool is not None:
+            if self._pool is not None and self._pool_ready:
                 return
-            await self._retry_pending_cleanup()
+            await self._retry_pending_pool()
 
             pool: _RedisPool | None = None
             factory_failed = False
@@ -86,29 +86,28 @@ class RedisClient:
             if factory_failed or pool is None:
                 raise RedisClientError("Redis connection failed") from None
 
+            self._pool = pool
+            self._pool_ready = False
             ping_failed = False
             try:
                 ping_result = await pool.ping()
             except asyncio.CancelledError:
-                self._cleanup_pool = pool
                 if await _try_close_pool(pool):
-                    self._cleanup_pool = None
+                    self._clear_pool()
                 raise
             except Exception:
                 ping_failed = True
                 ping_result = False
 
             if ping_failed:
-                self._cleanup_pool = pool
                 if await _try_close_pool(pool):
-                    self._cleanup_pool = None
+                    self._clear_pool()
                 raise RedisClientError("Redis connection failed") from None
             if ping_result is not True:
-                self._cleanup_pool = pool
                 if await _try_close_pool(pool):
-                    self._cleanup_pool = None
+                    self._clear_pool()
                 raise RedisClientError("Redis PING failed") from None
-            self._pool = pool
+            self._pool_ready = True
 
     async def ping(self) -> bool:
         """Run a live PING after ensuring the pool is connected."""
@@ -145,12 +144,15 @@ class RedisClient:
         return result
 
     async def close(self) -> None:
-        """Close every owned pool; failures retain ownership for a retry."""
+        """Close the owned pool; failures retain ownership for a retry."""
 
         async with self._lock:
             self._closed = True
-            await self._close_owned("_pool")
-            await self._close_owned("_cleanup_pool")
+            pool = self._pool
+            if pool is None:
+                return
+            await _close_pool(pool)
+            self._clear_pool()
 
     async def __aenter__(self) -> RedisClient:
         await self.connect()
@@ -162,23 +164,20 @@ class RedisClient:
     async def _pool_for_operation(self) -> _RedisPool:
         await self.connect()
         pool = self._pool
-        if pool is None:
+        if pool is None or not self._pool_ready:
             raise RedisClientError("Redis connection is unavailable")
         return pool
 
-    async def _retry_pending_cleanup(self) -> None:
-        pool = self._cleanup_pool
-        if pool is None:
+    async def _retry_pending_pool(self) -> None:
+        pool = self._pool
+        if pool is None or self._pool_ready:
             return
         await _close_pool(pool)
-        self._cleanup_pool = None
+        self._clear_pool()
 
-    async def _close_owned(self, attribute: str) -> None:
-        pool = getattr(self, attribute)
-        if pool is None:
-            return
-        await _close_pool(pool)
-        setattr(self, attribute, None)
+    def _clear_pool(self) -> None:
+        self._pool = None
+        self._pool_ready = False
 
 
 async def _try_close_pool(pool: _RedisPool) -> bool:
