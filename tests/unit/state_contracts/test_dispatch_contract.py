@@ -56,16 +56,54 @@ def test_claim_send_accept_is_strict_and_idempotent() -> None:
         now_ms=1_000,
     )
     assert claimed.state is DispatchIntentState.CLAIMED
-    sent = mark_dispatch_sent(claimed, owner_instance_id="dispatcher-01", fencing_token=7)
+    sent = mark_dispatch_sent(
+        claimed,
+        owner_instance_id="dispatcher-01",
+        fencing_token=7,
+        claim_token=CLAIM_ID_A,
+        now_ms=1_500,
+    )
     assert sent.state is DispatchIntentState.SENT
-    accepted = accept_dispatch(sent, owner_instance_id="dispatcher-01", fencing_token=7)
+    accepted = accept_dispatch(
+        sent,
+        owner_instance_id="dispatcher-01",
+        fencing_token=7,
+        claim_token=CLAIM_ID_A,
+        now_ms=1_500,
+    )
     assert accepted.state is DispatchIntentState.ACCEPTED
-    assert accept_dispatch(accepted, owner_instance_id="dispatcher-01", fencing_token=7) is accepted
+    assert accept_dispatch(
+        accepted,
+        owner_instance_id="dispatcher-01",
+        fencing_token=7,
+        claim_token=CLAIM_ID_A,
+        now_ms=1_500,
+    ) is accepted
 
     with pytest.raises(DispatchContractError, match="state"):
-        mark_dispatch_sent(pending, owner_instance_id="dispatcher-01", fencing_token=7)
+        mark_dispatch_sent(
+            pending,
+            owner_instance_id="dispatcher-01",
+            fencing_token=7,
+            claim_token=CLAIM_ID_A,
+            now_ms=1_500,
+        )
     with pytest.raises(DispatchContractError, match="owner"):
-        accept_dispatch(sent, owner_instance_id="other", fencing_token=7)
+        accept_dispatch(
+            sent,
+            owner_instance_id="other",
+            fencing_token=7,
+            claim_token=CLAIM_ID_A,
+            now_ms=1_500,
+        )
+    with pytest.raises(DispatchContractError, match="token"):
+        accept_dispatch(
+            sent,
+            owner_instance_id="dispatcher-01",
+            fencing_token=7,
+            claim_token=CLAIM_ID_B,
+            now_ms=1_500,
+        )
 
 
 def test_reclaim_requires_expiry_and_monotonically_invalidates_old_claim() -> None:
@@ -100,7 +138,13 @@ def test_reclaim_requires_expiry_and_monotonically_invalidates_old_claim() -> No
     assert reclaimed.fencing_token == 8
     assert reclaimed.owner_instance_id == "dispatcher-02"
     with pytest.raises(DispatchContractError, match="fence"):
-        mark_dispatch_sent(reclaimed, owner_instance_id="dispatcher-01", fencing_token=7)
+        mark_dispatch_sent(
+            reclaimed,
+            owner_instance_id="dispatcher-01",
+            fencing_token=7,
+            claim_token=CLAIM_ID_A,
+            now_ms=2_500,
+        )
 
 
 def test_dispatch_rejects_bool_float_and_digest_mutation() -> None:

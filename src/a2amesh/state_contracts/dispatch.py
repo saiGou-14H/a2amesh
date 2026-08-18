@@ -169,6 +169,8 @@ def claim_dispatch(
     lease_until_ms: int,
     now_ms: int,
 ) -> DispatchIntent:
+    if type(current) is not DispatchIntent:
+        raise DispatchContractError("current dispatch must be DispatchIntent")
     current.assert_integrity()
     if current.state is not DispatchIntentState.PENDING:
         raise DispatchContractError("dispatch claim requires PENDING state")
@@ -195,15 +197,25 @@ def mark_dispatch_sent(
     *,
     owner_instance_id: str,
     fencing_token: int,
+    claim_token: str,
+    now_ms: int,
 ) -> DispatchIntent:
+    if type(current) is not DispatchIntent:
+        raise DispatchContractError("current dispatch must be DispatchIntent")
     current.assert_integrity()
     if current.state is not DispatchIntentState.CLAIMED:
         raise DispatchContractError("mark sent requires CLAIMED state")
     _text(owner_instance_id, "owner_instance_id")
+    _text(claim_token, "claim_token")
+    _integer(now_ms, "now_ms")
     if type(fencing_token) is not int or fencing_token != current.fencing_token:
         raise DispatchContractError("fence does not match")
     if owner_instance_id != current.owner_instance_id:
         raise DispatchContractError("owner does not match")
+    if claim_token != current.claim_token:
+        raise DispatchContractError("claim token does not match")
+    if now_ms >= current.lease_until_ms:
+        raise DispatchContractError("dispatch lease is expired")
     return replace(current, state=DispatchIntentState.SENT, _snapshot_digest="")
 
 
@@ -212,17 +224,27 @@ def accept_dispatch(
     *,
     owner_instance_id: str,
     fencing_token: int,
+    claim_token: str,
+    now_ms: int,
 ) -> DispatchIntent:
+    if type(current) is not DispatchIntent:
+        raise DispatchContractError("current dispatch must be DispatchIntent")
     current.assert_integrity()
-    if current.state is DispatchIntentState.ACCEPTED:
-        return current
-    if current.state is not DispatchIntentState.SENT:
-        raise DispatchContractError("accept requires SENT state")
     _text(owner_instance_id, "owner_instance_id")
+    _text(claim_token, "claim_token")
+    _integer(now_ms, "now_ms")
     if type(fencing_token) is not int or fencing_token != current.fencing_token:
         raise DispatchContractError("fence does not match")
     if owner_instance_id != current.owner_instance_id:
         raise DispatchContractError("owner does not match")
+    if claim_token != current.claim_token:
+        raise DispatchContractError("claim token does not match")
+    if current.state is DispatchIntentState.ACCEPTED:
+        return current
+    if current.state is not DispatchIntentState.SENT:
+        raise DispatchContractError("accept requires SENT state")
+    if now_ms >= current.lease_until_ms:
+        raise DispatchContractError("dispatch lease is expired")
     return replace(current, state=DispatchIntentState.ACCEPTED, _snapshot_digest="")
 
 
@@ -235,6 +257,8 @@ def reclaim_dispatch(
     new_lease_until_ms: int,
     now_ms: int,
 ) -> DispatchIntent:
+    if type(current) is not DispatchIntent:
+        raise DispatchContractError("current dispatch must be DispatchIntent")
     current.assert_integrity()
     if current.state not in {DispatchIntentState.CLAIMED, DispatchIntentState.SENT}:
         raise DispatchContractError("reclaim requires CLAIMED or SENT state")

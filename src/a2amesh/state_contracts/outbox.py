@@ -145,6 +145,11 @@ def create_outbox_event(
     event_type: str,
     payload_digest: str,
 ) -> OutboxEvent:
+    task_id = _text(task_id, "task_id")
+    event_seq = _integer(event_seq, "event_seq", minimum=1)
+    task_version = _integer(task_version, "task_version", minimum=1)
+    event_type = _text(event_type, "event_type")
+    payload_digest = _digest(payload_digest, "payload_digest")
     return OutboxEvent(
         event_id=f"{task_id}:{event_seq}",
         task_id=task_id,
@@ -162,13 +167,20 @@ def append_event(events: Iterable[OutboxEvent], event: OutboxEvent) -> tuple[Out
     event.assert_integrity()
     if any(type(item) is not OutboxEvent for item in existing):
         raise OutboxContractError("existing outbox entries must be OutboxEvent")
+    for item in existing:
+        item.assert_integrity()
     if any(item.event_id == event.event_id for item in existing):
         raise OutboxContractError("duplicate outbox event")
     task_events = tuple(item for item in existing if item.task_id == event.task_id)
     if task_events:
-        expected = max(item.event_seq for item in task_events) + 1
-        if event.event_seq != expected:
-            raise OutboxContractError("outbox event sequence must be contiguous")
+        sequences = sorted(item.event_seq for item in task_events)
+        if sequences != list(range(1, len(sequences) + 1)):
+            raise OutboxContractError("existing outbox sequence is not contiguous")
+        expected = sequences[-1] + 1
+    else:
+        expected = 1
+    if event.event_seq != expected:
+        raise OutboxContractError("outbox event sequence must be contiguous")
     return existing + (event,)
 
 
@@ -177,17 +189,27 @@ def next_publishable(
 ) -> OutboxEvent | None:
     _text(task_id, "task_id")
     _integer(published_seq, "published_seq")
+    events = tuple(events)
+    if any(type(event) is not OutboxEvent for event in events):
+        raise OutboxContractError("outbox entries must be OutboxEvent")
     candidates = sorted(
         (event for event in events if event.task_id == task_id),
         key=lambda event: event.event_seq,
     )
-    expected = published_seq + 1
+    completed = 0
     for event in candidates:
         event.assert_integrity()
+        if event.event_seq != completed + 1:
+            raise OutboxContractError("outbox sequence is not contiguous")
+        if event.state is not OutboxState.PUBLISHED:
+            break
+        completed = event.event_seq
+    if published_seq != completed:
+        raise OutboxContractError("published watermark does not match outbox head")
+    expected = published_seq + 1
+    for event in candidates:
         if event.event_seq == expected:
             return event if event.state is OutboxState.PENDING else None
-        if event.event_seq > expected:
-            return None
     return None
 
 
@@ -200,6 +222,8 @@ def claim_event(
     lease_until_ms: int,
     now_ms: int,
 ) -> OutboxEvent:
+    if type(current) is not OutboxEvent:
+        raise OutboxContractError("current event must be OutboxEvent")
     current.assert_integrity()
     if current.state is not OutboxState.PENDING:
         raise OutboxContractError("outbox claim requires PENDING state")
@@ -226,15 +250,25 @@ def mark_published(
     *,
     owner_instance_id: str,
     fencing_token: int,
+    claim_token: str,
+    now_ms: int,
 ) -> OutboxEvent:
+    if type(current) is not OutboxEvent:
+        raise OutboxContractError("current event must be OutboxEvent")
     current.assert_integrity()
-    if current.state is OutboxState.PUBLISHED:
-        return current
-    if current.state is not OutboxState.CLAIMED:
-        raise OutboxContractError("publish requires CLAIMED state")
     _text(owner_instance_id, "owner_instance_id")
+    _text(claim_token, "claim_token")
+    _integer(now_ms, "now_ms")
     if type(fencing_token) is not int or fencing_token != current.fencing_token:
         raise OutboxContractError("fence does not match")
     if owner_instance_id != current.owner_instance_id:
         raise OutboxContractError("owner does not match")
+    if claim_token != current.claim_token:
+        raise OutboxContractError("claim token does not match")
+    if current.state is OutboxState.PUBLISHED:
+        return current
+    if current.state is not OutboxState.CLAIMED:
+        raise OutboxContractError("publish requires CLAIMED state")
+    if now_ms >= current.lease_until_ms:
+        raise OutboxContractError("outbox lease is expired")
     return replace(current, state=OutboxState.PUBLISHED, _snapshot_digest="")

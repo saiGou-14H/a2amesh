@@ -507,6 +507,8 @@ tests/unit/protocol/
 
 截至 2026-08-18 17:50（Asia/Shanghai），C2-S第四个纯合同子模块新增`state_contracts/outbox.py`，冻结`taskId:eventSeq`身份、连续append、head-of-line publish、claim/fence与PUBLISHED幂等；不接Redis/JetStream、不启动Relay。相关160 passed、全量530 passed/8 skipped、8/8，待独立复审。
 
+截至 2026-08-18 22:26（Asia/Shanghai），outbox/dispatch独立复审发现5个P1：publish缺claim token/lease、append未验证已有序列、watermark可越过HOL、factory先格式化再类型门禁、dispatch SENT/ACCEPTED缺token绑定；outbox-fix1补齐并通过全量`532 passed, 8 skipped`、8/8，待新checkpoint独立复审。
+
 ### 9.3 顺序
 
 1. Redis config 和 async client。
