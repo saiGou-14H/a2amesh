@@ -523,6 +523,8 @@ tests/unit/protocol/
 
 截至 2026-08-19 01:56（Asia/Shanghai），步骤1 checkpoint `f6d32a4`独立复审`BLOCKED`：默认CI未安装state extra、URL query可覆盖bytes合同、close/取消/清理丢池ownership、异常链泄密、URL端口未严格校验，另有repr path、异常归一和false PING缺口。redis-client-fix1已按RED修复并新增CI/生命周期/脱敏回归，CI显式安装state且test extra精确pin Redis；仅`--extra test`与`test+state`均8/8，目标25 passed、全量562 passed/8 skipped、真实Redis bytes smoke通过。该修复仍基于被BLOCKED的fix5，须待fix6 PASS后重基线并重新门禁/复审，未进入key builder/Lua。
 
+截至 2026-08-19 02:23（Asia/Shanghai），纯合同fix6精确树`62b8d1a/00d818`独立复审`PASS`（P1/P2/P3均无），39项focused、全量543 passed/8 skipped、8/8、fresh-import purity与17-case semantic probe通过；已推送`origin/work/c2-s-outbox-contract-fix6`并回读SHA一致。Redis步骤1fix2已从该verified基线重放基础、review remediation、锁定test extra及单一pool ownership四个checkpoint，代码head=`b4bf35d`；当前仅为待文档checkpoint/全量门禁/真实Redis smoke/新独立复审的候选，不含key builder/Lua/Redis Function/NATS或生产验收。
+
 ### 9.3 顺序
 
 1. Redis config 和 async client。
