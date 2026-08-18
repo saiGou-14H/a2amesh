@@ -41,6 +41,16 @@ from .dispatch import (
     reclaim_dispatch,
 )
 from .lease import LeaseContractError, LeaseGrant, renew_lease, validate_lease_write
+from .outbox import (
+    OutboxContractError,
+    OutboxEvent,
+    OutboxState,
+    append_event,
+    claim_event,
+    create_outbox_event,
+    mark_published,
+    next_publishable,
+)
 from .reconciliation import (
     ReconciliationClaimOperation,
     ReconciliationDueKind,
@@ -79,6 +89,14 @@ __all__ = [
     "create_dispatch_intent",
     "mark_dispatch_sent",
     "reclaim_dispatch",
+    "OutboxContractError",
+    "OutboxEvent",
+    "OutboxState",
+    "append_event",
+    "claim_event",
+    "create_outbox_event",
+    "mark_published",
+    "next_publishable",
     "ArtifactHoldExpiryCandidate",
     "ArtifactHoldExpiryCandidateLedgerEntry",
     "ArtifactHoldExpiryCASState",
