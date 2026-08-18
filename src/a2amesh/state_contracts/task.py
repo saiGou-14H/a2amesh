@@ -135,6 +135,10 @@ class TaskAggregate:
         _require_text(self.task.context_id, "task.context_id")
         if type(self.task.status.state) is not int:
             raise TaskContractError("task.status.state must be an official integer state")
+        try:
+            protocol.legal_task_state_transitions(self.task.status.state)
+        except Exception as exc:
+            raise TaskContractError("task.status.state is not a known TaskState") from exc
 
         snapshot = protocol.Task()
         snapshot.CopyFrom(self.task)
@@ -163,6 +167,10 @@ class TaskAggregate:
             raise TaskContractError("task_version must be a positive integer")
         if type(self.event_seq) is not int or self.event_seq < 0:
             raise TaskContractError("event_seq must be non-negative")
+        try:
+            protocol.legal_task_state_transitions(self.task.status.state)
+        except Exception as exc:
+            raise TaskContractError("task.status.state is not a known TaskState") from exc
         if self._compute_snapshot_digest() != self._snapshot_digest:
             raise TaskContractError("task aggregate snapshot digest mismatch")
 

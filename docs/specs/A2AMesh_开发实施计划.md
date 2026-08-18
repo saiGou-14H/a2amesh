@@ -499,6 +499,8 @@ tests/unit/protocol/
 
 截至 2026-08-18 12:01（Asia/Shanghai），C2-S第一个纯合同子模块已在独立worktree完成：新增`state_contracts/task.py`与facade导出，使用官方`protocol.Task`防御性snapshot，定义TaskClaimKey幂等摘要、CREATED/REPLAY/CONFLICT决策、taskVersion/eventSeq和官方TaskState迁移。模块不导入Redis/NATS，不代表Redis CAS、持久化、重启或多进程验收。
 
+截至 2026-08-18 12:31（Asia/Shanghai），C2-S task复审发现P1：aggregate创建/claim边界接受官方`TASK_STATE_UNSPECIFIED=0`及未知整数state；task-fix1在aggregate构造和assert_integrity前调用唯一官方`legal_task_state_transitions`，新增state=0/99回归，当前全量`511 passed, 8 skipped`、8/8。
+
 ### 9.3 顺序
 
 1. Redis config 和 async client。

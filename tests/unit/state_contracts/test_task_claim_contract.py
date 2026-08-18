@@ -44,6 +44,18 @@ def aggregate(
     )
 
 
+def test_invalid_task_states_are_rejected_at_aggregate_boundary() -> None:
+    for state in (0, 99):
+        invalid = submitted_task()
+        invalid.status.state = state
+        with pytest.raises(TaskContractError, match="TaskState"):
+            TaskAggregate.create(
+                task=invalid,
+                claim_key=claim_key(),
+                command_digest=COMMAND_DIGEST,
+            )
+
+
 def test_task_contract_facade_exports_the_same_types() -> None:
     assert state_contracts.TaskAggregate is TaskAggregate
     assert state_contracts.TaskClaimKey is TaskClaimKey
