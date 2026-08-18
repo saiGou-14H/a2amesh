@@ -122,7 +122,7 @@ def test_claim_and_publish_require_owner_and_fence_and_are_idempotent() -> None:
         owner_instance_id="relay-01",
         fencing_token=7,
         claim_token=CLAIM_ID,
-        now_ms=9_999,
+        now_ms=1_500,
     ) is published
     with pytest.raises(OutboxContractError, match="token"):
         mark_published(
@@ -130,8 +130,63 @@ def test_claim_and_publish_require_owner_and_fence_and_are_idempotent() -> None:
             owner_instance_id="relay-01",
             fencing_token=7,
             claim_token=WRONG_CLAIM_ID,
+            now_ms=1_500,
+        )
+    with pytest.raises(OutboxContractError, match="expired"):
+        mark_published(
+            published,
+            owner_instance_id="relay-01",
+            fencing_token=7,
+            claim_token=CLAIM_ID,
             now_ms=9_999,
         )
+
+
+def _rehash(event_value: OutboxEvent) -> OutboxEvent:
+    object.__setattr__(event_value, "_snapshot_digest", event_value._compute_digest())
+    return event_value
+
+
+def test_outbox_semantics_are_not_bypassable_by_self_rehashed_mutation() -> None:
+    bad_identity = event(1)
+    object.__setattr__(bad_identity, "event_id", "other-task:1")
+    _rehash(bad_identity)
+    with pytest.raises(OutboxContractError, match="event_id"):
+        append_event((), bad_identity)
+
+    bad_pending_claim = event(1)
+    object.__setattr__(bad_pending_claim, "owner_instance_id", "relay-01")
+    object.__setattr__(bad_pending_claim, "claim_token", CLAIM_ID)
+    object.__setattr__(bad_pending_claim, "fencing_token", 7)
+    object.__setattr__(bad_pending_claim, "lease_until_ms", 2_000)
+    _rehash(bad_pending_claim)
+    with pytest.raises(OutboxContractError, match="pending"):
+        append_event((), bad_pending_claim)
+
+    bad_published = event(1)
+    object.__setattr__(bad_published, "state", OutboxState.PUBLISHED)
+    _rehash(bad_published)
+    with pytest.raises(OutboxContractError, match="owner_instance_id"):
+        next_publishable((bad_published,), task_id="task-01", published_seq=1)
+
+
+def test_next_publishable_validates_every_existing_suffix_before_selecting_head() -> None:
+    first = event(1)
+    second = event(2, digest=DIGEST_B)
+    object.__setattr__(second, "event_id", "wrong:2")
+    _rehash(second)
+    with pytest.raises(OutboxContractError, match="event_id"):
+        next_publishable((first, second), task_id="task-01", published_seq=0)
+
+    malformed_state = event(1)
+    object.__setattr__(malformed_state, "state", object())
+    with pytest.raises(OutboxContractError):
+        next_publishable((malformed_state,), task_id="task-01", published_seq=0)
+
+    malformed_seq = event(1)
+    object.__setattr__(malformed_seq, "event_seq", "1")
+    with pytest.raises(OutboxContractError):
+        next_publishable((malformed_seq,), task_id="task-01", published_seq=0)
 
 
 def test_wrong_runtime_objects_fail_with_outbox_contract_error() -> None:

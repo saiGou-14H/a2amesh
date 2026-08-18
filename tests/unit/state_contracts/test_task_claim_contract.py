@@ -107,6 +107,22 @@ def test_aggregate_owns_a_task_snapshot_and_stable_digest() -> None:
         )
 
 
+def test_task_semantics_are_not_bypassable_by_self_rehashed_mutation() -> None:
+    bad_task = aggregate()
+    bad_task.task.id = ""
+    object.__setattr__(bad_task, "_snapshot_digest", bad_task._compute_snapshot_digest())
+    with pytest.raises(TaskContractError, match="task.id"):
+        bad_task.assert_integrity()
+    with pytest.raises(TaskContractError, match="task.id"):
+        evaluate_claim(None, bad_task)
+
+    bad_key = aggregate()
+    object.__setattr__(bad_key.claim_key, "request_digest", "not-a-digest")
+    object.__setattr__(bad_key, "_snapshot_digest", bad_key._compute_snapshot_digest())
+    with pytest.raises(TaskContractError, match="request_digest"):
+        bad_key.assert_integrity()
+
+
 def test_same_claim_and_same_command_is_idempotent_but_digest_conflict_is_rejected() -> None:
     existing = aggregate()
     same = aggregate()

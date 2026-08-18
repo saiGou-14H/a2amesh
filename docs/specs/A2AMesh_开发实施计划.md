@@ -511,6 +511,8 @@ tests/unit/protocol/
 
 截至 2026-08-18 22:47（Asia/Shanghai），outbox-fix1复审又确认dispatch SENT/ACCEPTED缺attempt绑定；outbox-fix2为两条dispatch入口增加exact attempt参数/校验，相关回归与全量`532 passed, 8 skipped`、8/8通过，待新checkpoint独立复审。
 
+截至 2026-08-19 00:15（Asia/Shanghai），outbox-fix2复审发现自洽重哈希可绕过outbox/task/lease语义不变量、损坏enum/sequence可泄漏原生异常、终态重放可越过lease，以及state_contracts facade传递artifact_hold的secrets；outbox-fix3补充可重复semantic validators、全量入口total校验、终态lease边界与artifact惰性导出，新增回归后全量`537 passed, 8 skipped`、8/8，待checkpoint/独立复审。
+
 ### 9.3 顺序
 
 1. Redis config 和 async client。

@@ -74,6 +74,17 @@ class DispatchIntent:
     _snapshot_digest: str = field(default="", repr=False, compare=True)
 
     def __post_init__(self) -> None:
+        self._assert_semantics()
+        snapshot = self._compute_digest()
+        if type(self._snapshot_digest) is not str:
+            raise DispatchContractError("dispatch snapshot digest must be plain text")
+        if self._snapshot_digest != "":
+            if self._snapshot_digest != snapshot:
+                raise DispatchContractError("dispatch snapshot digest mismatch")
+        else:
+            object.__setattr__(self, "_snapshot_digest", snapshot)
+
+    def _assert_semantics(self) -> None:
         _text(self.dispatch_id, "dispatch_id")
         _text(self.task_id, "task_id")
         _text(self.target_agent_id, "target_agent_id")
@@ -100,14 +111,7 @@ class DispatchIntent:
             _text(self.claim_token, "claim_token")
             _integer(self.fencing_token, "fencing_token", minimum=1)
             _integer(self.lease_until_ms, "lease_until_ms", minimum=1)
-        snapshot = self._compute_digest()
-        if type(self._snapshot_digest) is not str:
-            raise DispatchContractError("snapshot digest must be plain text")
-        if self._snapshot_digest != "":
-            if self._snapshot_digest != snapshot:
-                raise DispatchContractError("dispatch snapshot digest mismatch")
-        else:
-            object.__setattr__(self, "_snapshot_digest", snapshot)
+
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -129,6 +133,7 @@ class DispatchIntent:
         return hashlib.sha256(rfc8785.dumps(self._payload())).hexdigest()
 
     def assert_integrity(self) -> None:
+        self._assert_semantics()
         if self._compute_digest() != self._snapshot_digest:
             raise DispatchContractError("dispatch snapshot digest mismatch")
 
@@ -248,6 +253,8 @@ def accept_dispatch(
     if attempt != current.attempt:
         raise DispatchContractError("attempt does not match")
     if current.state is DispatchIntentState.ACCEPTED:
+        if now_ms >= current.lease_until_ms:
+            raise DispatchContractError("dispatch lease is expired")
         return current
     if current.state is not DispatchIntentState.SENT:
         raise DispatchContractError("accept requires SENT state")

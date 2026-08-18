@@ -70,6 +70,17 @@ class OutboxEvent:
     _snapshot_digest: str = field(default="", repr=False, compare=True)
 
     def __post_init__(self) -> None:
+        self._assert_semantics()
+        digest = self._compute_digest()
+        if type(self._snapshot_digest) is not str:
+            raise OutboxContractError("snapshot digest must be plain text")
+        if self._snapshot_digest != "":
+            if self._snapshot_digest != digest:
+                raise OutboxContractError("outbox snapshot digest mismatch")
+        else:
+            object.__setattr__(self, "_snapshot_digest", digest)
+
+    def _assert_semantics(self) -> None:
         _text(self.event_id, "event_id")
         _text(self.task_id, "task_id")
         _integer(self.event_seq, "event_seq", minimum=1)
@@ -97,14 +108,7 @@ class OutboxEvent:
             _text(self.claim_token, "claim_token")
             _integer(self.fencing_token, "fencing_token", minimum=1)
             _integer(self.lease_until_ms, "lease_until_ms", minimum=1)
-        digest = self._compute_digest()
-        if type(self._snapshot_digest) is not str:
-            raise OutboxContractError("snapshot digest must be plain text")
-        if self._snapshot_digest != "":
-            if self._snapshot_digest != digest:
-                raise OutboxContractError("outbox snapshot digest mismatch")
-        else:
-            object.__setattr__(self, "_snapshot_digest", digest)
+
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -125,6 +129,7 @@ class OutboxEvent:
         return hashlib.sha256(rfc8785.dumps(self._payload())).hexdigest()
 
     def assert_integrity(self) -> None:
+        self._assert_semantics()
         if self._compute_digest() != self._snapshot_digest:
             raise OutboxContractError("outbox snapshot digest mismatch")
 
@@ -192,13 +197,14 @@ def next_publishable(
     events = tuple(events)
     if any(type(event) is not OutboxEvent for event in events):
         raise OutboxContractError("outbox entries must be OutboxEvent")
+    for event in events:
+        event.assert_integrity()
     candidates = sorted(
         (event for event in events if event.task_id == task_id),
         key=lambda event: event.event_seq,
     )
     completed = 0
     for event in candidates:
-        event.assert_integrity()
         if event.event_seq != completed + 1:
             raise OutboxContractError("outbox sequence is not contiguous")
         if event.state is not OutboxState.PUBLISHED:
@@ -266,6 +272,8 @@ def mark_published(
     if claim_token != current.claim_token:
         raise OutboxContractError("claim token does not match")
     if current.state is OutboxState.PUBLISHED:
+        if now_ms >= current.lease_until_ms:
+            raise OutboxContractError("outbox lease is expired")
         return current
     if current.state is not OutboxState.CLAIMED:
         raise OutboxContractError("publish requires CLAIMED state")

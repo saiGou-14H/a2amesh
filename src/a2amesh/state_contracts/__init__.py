@@ -1,35 +1,7 @@
 """Executable state-plane identity contracts shared by bindings and workers."""
 
-from .artifact_hold import (
-    ARTIFACT_HOLD_CANDIDATE_LEASE_MAX_MS,
-    ArtifactHoldExpiryCandidate,
-    ArtifactHoldExpiryCandidateLedgerEntry,
-    ArtifactHoldExpiryCASState,
-    ArtifactHoldExpiryCommit,
-    ArtifactHoldExpiryConflict,
-    ArtifactHoldExpiryEventRecord,
-    ArtifactHoldExpiryEventSink,
-    ArtifactHoldExpiryLedgerState,
-    ArtifactHoldExpiryOperation,
-    ArtifactHoldExpiryReplayClaimRequest,
-    ArtifactHoldExpiryReplayClaimResult,
-    ArtifactHoldExpiryReplayCurrentAuthority,
-    ArtifactHoldExpiryRequest,
-    ArtifactHoldExpiryResult,
-    ArtifactHoldExpiryScanAuthority,
-    ArtifactHoldExpiryScanRequest,
-    ArtifactHoldExpiryScanResult,
-    ArtifactHoldState,
-    ArtifactHoldStatus,
-    ArtifactLifecycleStatus,
-    apply_artifact_hold_expiry,
-    apply_artifact_hold_expiry_replay_claim,
-    apply_artifact_hold_expiry_scan,
-    artifact_hold_expiry_operation_id,
-    artifact_hold_expiry_preimage,
-    artifact_hold_expiry_replay_claim_operation_id,
-    artifact_hold_expiry_request_digest,
-)
+from importlib import import_module
+
 from .dispatch import (
     DispatchContractError,
     DispatchIntent,
@@ -69,6 +41,48 @@ from .task import (
     TaskContractError,
     evaluate_claim,
 )
+
+_ARTIFACT_EXPORTS = frozenset(
+    {
+        "ARTIFACT_HOLD_CANDIDATE_LEASE_MAX_MS",
+        "ArtifactHoldExpiryCandidate",
+        "ArtifactHoldExpiryCandidateLedgerEntry",
+        "ArtifactHoldExpiryCASState",
+        "ArtifactHoldExpiryCommit",
+        "ArtifactHoldExpiryConflict",
+        "ArtifactHoldExpiryEventRecord",
+        "ArtifactHoldExpiryEventSink",
+        "ArtifactHoldExpiryLedgerState",
+        "ArtifactHoldExpiryOperation",
+        "ArtifactHoldExpiryReplayClaimRequest",
+        "ArtifactHoldExpiryReplayClaimResult",
+        "ArtifactHoldExpiryReplayCurrentAuthority",
+        "ArtifactHoldExpiryRequest",
+        "ArtifactHoldExpiryResult",
+        "ArtifactHoldExpiryScanAuthority",
+        "ArtifactHoldExpiryScanRequest",
+        "ArtifactHoldExpiryScanResult",
+        "ArtifactHoldState",
+        "ArtifactHoldStatus",
+        "ArtifactLifecycleStatus",
+        "apply_artifact_hold_expiry",
+        "apply_artifact_hold_expiry_replay_claim",
+        "apply_artifact_hold_expiry_scan",
+        "artifact_hold_expiry_operation_id",
+        "artifact_hold_expiry_preimage",
+        "artifact_hold_expiry_replay_claim_operation_id",
+        "artifact_hold_expiry_request_digest",
+    }
+)
+
+
+def __getattr__(name: str):
+    if name in _ARTIFACT_EXPORTS:
+        module = import_module(".artifact_hold", __name__)
+        value = getattr(module, name)
+        globals()[name] = value
+        return value
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 __all__ = [
     "DispatchContractError",

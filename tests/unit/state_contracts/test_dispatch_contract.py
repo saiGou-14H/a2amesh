@@ -82,6 +82,15 @@ def test_claim_send_accept_is_strict_and_idempotent() -> None:
         attempt=1,
         now_ms=1_500,
     ) is accepted
+    with pytest.raises(DispatchContractError, match="expired"):
+        accept_dispatch(
+            accepted,
+            owner_instance_id="dispatcher-01",
+            fencing_token=7,
+            claim_token=CLAIM_ID_A,
+            attempt=1,
+            now_ms=9_999,
+        )
 
     with pytest.raises(DispatchContractError, match="state"):
         mark_dispatch_sent(
@@ -170,3 +179,33 @@ def test_dispatch_rejects_bool_float_and_digest_mutation() -> None:
         intent(config_generation=1.0)
     with pytest.raises(DispatchContractError):
         intent(command_digest="not-a-digest")
+
+
+def test_dispatch_semantics_are_not_bypassable_by_rehashed_or_malformed_state() -> None:
+    pending_claim = intent()
+    object.__setattr__(pending_claim, "owner_instance_id", "dispatcher-01")
+    object.__setattr__(pending_claim, "claim_token", CLAIM_ID_A)
+    object.__setattr__(pending_claim, "fencing_token", 7)
+    object.__setattr__(pending_claim, "lease_until_ms", 2_000)
+    object.__setattr__(pending_claim, "_snapshot_digest", pending_claim._compute_digest())
+    with pytest.raises(DispatchContractError, match="pending"):
+        claim_dispatch(
+            pending_claim,
+            owner_instance_id="dispatcher-01",
+            fencing_token=7,
+            claim_token=CLAIM_ID_A,
+            lease_until_ms=3_000,
+            now_ms=1_000,
+        )
+
+    malformed_state = intent()
+    object.__setattr__(malformed_state, "state", object())
+    with pytest.raises(DispatchContractError):
+        claim_dispatch(
+            malformed_state,
+            owner_instance_id="dispatcher-01",
+            fencing_token=7,
+            claim_token=CLAIM_ID_A,
+            lease_until_ms=2_000,
+            now_ms=1_000,
+        )

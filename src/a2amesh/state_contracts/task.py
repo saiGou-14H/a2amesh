@@ -88,10 +88,18 @@ class TaskClaimKey:
         return self.identity_dict() | {"requestDigest": self.request_digest}
 
     def canonical_bytes(self) -> bytes:
+        self.assert_integrity()
         return rfc8785.dumps(self.to_dict())
+
+    def assert_integrity(self) -> None:
+        _require_text(self.principal_id, "principal_id")
+        _require_text(self.target_agent_id, "target_agent_id")
+        _require_text(self.message_id, "message_id")
+        _require_digest(self.request_digest, "request_digest")
 
     @property
     def idempotency_digest(self) -> str:
+        self.assert_integrity()
         return hashlib.sha256(rfc8785.dumps(self.identity_dict())).hexdigest()
 
 
@@ -121,10 +129,25 @@ class TaskAggregate:
         )
 
     def __post_init__(self) -> None:
+        self._assert_semantics()
+        snapshot = protocol.Task()
+        snapshot.CopyFrom(self.task)
+        object.__setattr__(self, "task", snapshot)
+        digest = self._compute_snapshot_digest()
+        if type(self._snapshot_digest) is not str:
+            raise TaskContractError("task aggregate snapshot digest must be plain text")
+        if self._snapshot_digest != "":
+            if self._snapshot_digest != digest:
+                raise TaskContractError("task aggregate snapshot digest mismatch")
+        else:
+            object.__setattr__(self, "_snapshot_digest", digest)
+
+    def _assert_semantics(self) -> None:
         if type(self.task) is not protocol.Task:
             raise TaskContractError("task must be the official protocol.Task type")
         if type(self.claim_key) is not TaskClaimKey:
             raise TaskContractError("claim_key must be TaskClaimKey")
+        self.claim_key.assert_integrity()
         if type(self.task_version) is not int or not (
             1 <= self.task_version <= _MAX_JSON_SAFE_INTEGER
         ):
@@ -143,17 +166,6 @@ class TaskAggregate:
         except Exception as exc:
             raise TaskContractError("task.status.state is not a known TaskState") from exc
 
-        snapshot = protocol.Task()
-        snapshot.CopyFrom(self.task)
-        object.__setattr__(self, "task", snapshot)
-        digest = self._compute_snapshot_digest()
-        if type(self._snapshot_digest) is not str:
-            raise TaskContractError("task aggregate snapshot digest must be plain text")
-        if self._snapshot_digest != "":
-            if self._snapshot_digest != digest:
-                raise TaskContractError("task aggregate snapshot digest mismatch")
-        else:
-            object.__setattr__(self, "_snapshot_digest", digest)
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -168,14 +180,7 @@ class TaskAggregate:
         return hashlib.sha256(rfc8785.dumps(self._payload())).hexdigest()
 
     def assert_integrity(self) -> None:
-        if type(self.task_version) is not int or self.task_version < 1:
-            raise TaskContractError("task_version must be a positive integer")
-        if type(self.event_seq) is not int or self.event_seq < 0:
-            raise TaskContractError("event_seq must be non-negative")
-        try:
-            protocol.legal_task_state_transitions(self.task.status.state)
-        except Exception as exc:
-            raise TaskContractError("task.status.state is not a known TaskState") from exc
+        self._assert_semantics()
         if self._compute_snapshot_digest() != self._snapshot_digest:
             raise TaskContractError("task aggregate snapshot digest mismatch")
 

@@ -149,6 +149,30 @@ def test_new_fence_is_a_new_lease_and_old_grant_cannot_be_mutated() -> None:
         replace(old, lease_until_ms=0).assert_integrity()
 
 
+def test_lease_semantics_are_not_bypassable_by_self_rehashed_mutation() -> None:
+    bad_generation = grant()
+    object.__setattr__(bad_generation, "config_generation", 0)
+    object.__setattr__(bad_generation, "_snapshot_digest", bad_generation._compute_digest())
+    with pytest.raises(LeaseContractError, match="config_generation"):
+        bad_generation.assert_integrity()
+    with pytest.raises(LeaseContractError, match="config_generation"):
+        validate_lease_write(
+            bad_generation,
+            owner_principal_id="agent:caller",
+            owner_instance_id="instance-01",
+            fencing_token=7,
+            attempt=1,
+            config_generation=0,
+            now_ms=1_500,
+        )
+
+    bad_request = grant()
+    object.__setattr__(bad_request, "request_digest", "not-a-digest")
+    object.__setattr__(bad_request, "_snapshot_digest", bad_request._compute_digest())
+    with pytest.raises(LeaseContractError, match="request_digest"):
+        bad_request.assert_integrity()
+
+
 def test_lease_text_unicode_and_snapshot_sentinel_are_bounded() -> None:
     with pytest.raises(LeaseContractError, match="UTF-8"):
         grant(owner_instance_id="\ud800")

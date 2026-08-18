@@ -60,6 +60,17 @@ class LeaseGrant:
     _snapshot_digest: str = field(default="", repr=False, compare=True)
 
     def __post_init__(self) -> None:
+        self._assert_semantics()
+        snapshot = self._compute_digest()
+        if type(self._snapshot_digest) is not str:
+            raise LeaseContractError("lease snapshot digest must be plain text")
+        if self._snapshot_digest != "":
+            if self._snapshot_digest != snapshot:
+                raise LeaseContractError("lease snapshot digest mismatch")
+        else:
+            object.__setattr__(self, "_snapshot_digest", snapshot)
+
+    def _assert_semantics(self) -> None:
         _text(self.lease_id, "lease_id")
         _text(self.owner_principal_id, "owner_principal_id")
         _text(self.owner_instance_id, "owner_instance_id")
@@ -71,14 +82,7 @@ class LeaseGrant:
         _digest(self.request_digest, "request_digest")
         if self.lease_until_ms <= self.issued_at_ms:
             raise LeaseContractError("lease must end after issued time")
-        snapshot = self._compute_digest()
-        if type(self._snapshot_digest) is not str:
-            raise LeaseContractError("lease snapshot digest must be plain text")
-        if self._snapshot_digest != "":
-            if self._snapshot_digest != snapshot:
-                raise LeaseContractError("lease snapshot digest mismatch")
-        else:
-            object.__setattr__(self, "_snapshot_digest", snapshot)
+
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -97,12 +101,7 @@ class LeaseGrant:
         return hashlib.sha256(rfc8785.dumps(self._payload())).hexdigest()
 
     def assert_integrity(self) -> None:
-        if type(self.fencing_token) is not int or self.fencing_token < 1:
-            raise LeaseContractError("fence must be positive")
-        if type(self.attempt) is not int or self.attempt < 1:
-            raise LeaseContractError("attempt must be positive")
-        if type(self.lease_until_ms) is not int or self.lease_until_ms <= self.issued_at_ms:
-            raise LeaseContractError("lease interval is invalid")
+        self._assert_semantics()
         if self._compute_digest() != self._snapshot_digest:
             raise LeaseContractError("lease snapshot digest mismatch")
 
