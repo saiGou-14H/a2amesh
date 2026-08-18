@@ -10,11 +10,12 @@ import hashlib
 import re
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import rfc8785
 
-from a2amesh import protocol
+if TYPE_CHECKING:
+    from a2amesh import protocol
 
 _MAX_JSON_SAFE_INTEGER = 9_007_199_254_740_991
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -23,6 +24,12 @@ _SAFE_TEXT = re.compile(r"^[^\x00-\x1f\x7f-\x9f\u2028\u2029]+$")
 
 class TaskContractError(ValueError):
     """A pure Task aggregate or claim contract is invalid."""
+
+
+def _protocol():
+    from a2amesh import protocol as protocol_module
+
+    return protocol_module
 
 
 class TaskClaimOutcome(StrEnum):
@@ -59,7 +66,7 @@ def _require_integer(value: object, label: str, *, minimum: int) -> int:
 
 
 def _task_json(task: protocol.Task) -> dict[str, Any]:
-    return protocol.to_protojson_dict(task)
+    return _protocol().to_protojson_dict(task)
 
 
 @dataclass(frozen=True, slots=True)
@@ -130,6 +137,7 @@ class TaskAggregate:
 
     def __post_init__(self) -> None:
         self._assert_semantics()
+        protocol = _protocol()
         snapshot = protocol.Task()
         snapshot.CopyFrom(self.task)
         object.__setattr__(self, "task", snapshot)
@@ -143,6 +151,7 @@ class TaskAggregate:
             object.__setattr__(self, "_snapshot_digest", digest)
 
     def _assert_semantics(self) -> None:
+        protocol = _protocol()
         if type(self.task) is not protocol.Task:
             raise TaskContractError("task must be the official protocol.Task type")
         if type(self.claim_key) is not TaskClaimKey:
@@ -193,6 +202,7 @@ class TaskAggregate:
 
     def transition(self, target_state: int) -> TaskAggregate:
         self.assert_integrity()
+        protocol = _protocol()
         try:
             protocol.validate_task_state_transition(self.task.status.state, target_state)
         except Exception as exc:
@@ -222,6 +232,7 @@ def evaluate_claim(
     """Evaluate an idempotent claim without performing any external write."""
     if type(requested) is not TaskAggregate:
         raise TaskContractError("requested claim must be TaskAggregate")
+    protocol = _protocol()
     requested.assert_integrity()
     if existing is None:
         if requested.task.status.state != protocol.TaskState.TASK_STATE_SUBMITTED:

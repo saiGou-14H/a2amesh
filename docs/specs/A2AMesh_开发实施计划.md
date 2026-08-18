@@ -515,6 +515,8 @@ tests/unit/protocol/
 
 截至 2026-08-19 00:34（Asia/Shanghai），fix3复审发现facade直接加载官方SDK传递的`random`；outbox-fix4将全部state_contracts符号改为lazy module map，fresh direct import不再加载`random/datetime/socket/secrets`，显式artifact/star export兼容，新增严格probe与全量`537 passed, 8 skipped`、8/8，待checkpoint/独立复审。
 
+截至 2026-08-19 00:51（Asia/Shanghai），fix4复审确认`task.py`自身顶层protocol导入仍使fresh direct task import传递加载`random`；outbox-fix5改为TYPE_CHECKING声明与运行时惰性protocol解析，task/facade fresh import均无SDK/随机传递，相关probe与全量`537 passed, 8 skipped`、8/8通过，待checkpoint/独立复审。
+
 ### 9.3 顺序
 
 1. Redis config 和 async client。
