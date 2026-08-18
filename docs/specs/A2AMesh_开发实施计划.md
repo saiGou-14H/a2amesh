@@ -521,7 +521,7 @@ tests/unit/protocol/
 
 截至 2026-08-19 01:14（Asia/Shanghai），在fix5候选树上按9.3步骤1实现`state/config.py`与`state/client.py`：Redis URL/mesh_id/超时/连接池环境配置严格校验，固定`decode_responses=False`，client以async pool健康PING后发布、错误不泄露凭据、close幂等；新增13项fake lifecycle/config测试，并用本机Redis真实执行connect/ping/SET/GET/DEL/close通过。扩展后全量`550 passed, 8 skipped`、8/8与Ruff通过；步骤1待checkpoint/独立复审。
 
-截至 2026-08-19 01:56（Asia/Shanghai），步骤1 checkpoint `f6d32a4`独立复审`BLOCKED`：默认CI未安装state extra、URL query可覆盖bytes合同、close/取消/清理丢池ownership、异常链泄密、URL端口未严格校验，另有repr path、异常归一和false PING缺口。redis-client-fix1已按RED修复并新增CI/生命周期/脱敏回归；目标25 passed、全量562 passed/8 skipped、8/8、真实Redis bytes smoke通过。该修复仍基于被BLOCKED的fix5，须待fix6 PASS后重基线并重新门禁/复审，未进入key builder/Lua。
+截至 2026-08-19 01:56（Asia/Shanghai），步骤1 checkpoint `f6d32a4`独立复审`BLOCKED`：默认CI未安装state extra、URL query可覆盖bytes合同、close/取消/清理丢池ownership、异常链泄密、URL端口未严格校验，另有repr path、异常归一和false PING缺口。redis-client-fix1已按RED修复并新增CI/生命周期/脱敏回归，CI显式安装state且test extra精确pin Redis；仅`--extra test`与`test+state`均8/8，目标25 passed、全量562 passed/8 skipped、真实Redis bytes smoke通过。该修复仍基于被BLOCKED的fix5，须待fix6 PASS后重基线并重新门禁/复审，未进入key builder/Lua。
 
 ### 9.3 顺序
 

@@ -74,6 +74,7 @@ test = [
     { name = "mcp" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
+    { name = "redis", extra = ["hiredis"] },
     { name = "ruff" },
     { name = "setuptools" },
 ]
@@ -98,6 +99,7 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "pyyaml", specifier = ">=6.0.0" },
     { name = "redis", extras = ["hiredis"], marker = "extra == 'state'", specifier = "==8.1.0" },
+    { name = "redis", extras = ["hiredis"], marker = "extra == 'test'", specifier = "==8.1.0" },
     { name = "rfc8785", specifier = "==0.1.4" },
     { name = "ruff", marker = "extra == 'test'", specifier = "==0.16.3" },
     { name = "setuptools", marker = "extra == 'test'", specifier = "==84.0.0" },

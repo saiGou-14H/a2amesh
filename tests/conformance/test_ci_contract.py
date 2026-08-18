@@ -75,6 +75,7 @@ def test_development_and_browser_dependencies_are_pinned() -> None:
         "mcp==2.0.0",
         "pytest==9.1.1",
         "pytest-asyncio==1.4.0",
+        "redis[hiredis]==8.1.0",
         "ruff==0.16.3",
         "setuptools==84.0.0",
     ]
