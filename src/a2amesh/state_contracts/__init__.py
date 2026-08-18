@@ -30,6 +30,16 @@ from .artifact_hold import (
     artifact_hold_expiry_replay_claim_operation_id,
     artifact_hold_expiry_request_digest,
 )
+from .dispatch import (
+    DispatchContractError,
+    DispatchIntent,
+    DispatchIntentState,
+    accept_dispatch,
+    claim_dispatch,
+    create_dispatch_intent,
+    mark_dispatch_sent,
+    reclaim_dispatch,
+)
 from .lease import LeaseContractError, LeaseGrant, renew_lease, validate_lease_write
 from .reconciliation import (
     ReconciliationClaimOperation,
@@ -51,6 +61,9 @@ from .task import (
 )
 
 __all__ = [
+    "DispatchContractError",
+    "DispatchIntent",
+    "DispatchIntentState",
     "LeaseContractError",
     "LeaseGrant",
     "TaskAggregate",
@@ -61,6 +74,11 @@ __all__ = [
     "evaluate_claim",
     "renew_lease",
     "validate_lease_write",
+    "accept_dispatch",
+    "claim_dispatch",
+    "create_dispatch_intent",
+    "mark_dispatch_sent",
+    "reclaim_dispatch",
     "ArtifactHoldExpiryCandidate",
     "ArtifactHoldExpiryCandidateLedgerEntry",
     "ArtifactHoldExpiryCASState",

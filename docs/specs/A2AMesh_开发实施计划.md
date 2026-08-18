@@ -503,6 +503,8 @@ tests/unit/protocol/
 
 截至 2026-08-18 12:58（Asia/Shanghai），task+lease复审发现owner hostile string、CREATED非SUBMITTED/非初始(1,0)、snapshot sentinel truthiness和lone surrogate四个边界；lease-fix1补exact owner、CREATED初态、seal sentinel与Unicode合同，当前全量`519 passed, 8 skipped`、8/8，待独立复审。
 
+截至 2026-08-18 17:26（Asia/Shanghai），C2-S第三个纯合同子模块新增`state_contracts/dispatch.py`，冻结PENDING→CLAIMED→SENT→ACCEPTED生命周期、claim token/fence/attempt单调接管、旧owner拒绝与canonical intent digest；不publish NATS、不启动Runtime、不接Redis。相关154 passed、全量524 passed/8 skipped、8/8，待独立复审。
+
 ### 9.3 顺序
 
 1. Redis config 和 async client。
