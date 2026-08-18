@@ -519,6 +519,8 @@ tests/unit/protocol/
 
 截至 2026-08-19 01:26（Asia/Shanghai），fix5独立复审`BLOCKED`：发现next_publishable未验证HOL后缀、append_event可直接写CLAIMED/PUBLISHED、renew_lease缺now_ms，以及四路径恶意snapshot比较异常和lazy protocol反射NameError。fix6以RED回归闭合上述边界：完整序列先验、append仅PENDING、续租有效窗口、plain digest sentinel、task protocol proxy；当前543 passed/8 skipped、8/8，待checkpoint/独立复审。
 
+截至 2026-08-19 01:14（Asia/Shanghai），在fix5候选树上按9.3步骤1实现`state/config.py`与`state/client.py`：Redis URL/mesh_id/超时/连接池环境配置严格校验，固定`decode_responses=False`，client以async pool健康PING后发布、错误不泄露凭据、close幂等；新增13项fake lifecycle/config测试，并用本机Redis真实执行connect/ping/SET/GET/DEL/close通过。扩展后全量`550 passed, 8 skipped`、8/8与Ruff通过；步骤1待checkpoint/独立复审。
+
 ### 9.3 顺序
 
 1. Redis config 和 async client。
