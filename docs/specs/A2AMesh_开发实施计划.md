@@ -499,6 +499,8 @@ tests/unit/protocol/
 
 截至 2026-08-18 12:01（Asia/Shanghai），C2-S第一个纯合同子模块已在独立worktree完成：新增`state_contracts/task.py`与facade导出，使用官方`protocol.Task`防御性snapshot，定义TaskClaimKey幂等摘要、CREATED/REPLAY/CONFLICT决策、taskVersion/eventSeq和官方TaskState迁移。模块不导入Redis/NATS，不代表Redis CAS、持久化、重启或多进程验收。
 
+截至 2026-08-18 12:22（Asia/Shanghai），C2-S第二个纯合同子模块在task checkpoint派生worktree完成：新增`state_contracts/lease.py`与facade导出，定义LeaseGrant稳定摘要、同owner/fence续租、旧owner/fence/attempt/generation/过期写入拒绝。仍不分配系统时间/随机fence、不接Redis/NATS；task独立复审与lease独立复审均需完成后才进入dispatch/outbox。
+
 ### 9.3 顺序
 
 1. Redis config 和 async client。

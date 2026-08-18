@@ -30,6 +30,7 @@ from .artifact_hold import (
     artifact_hold_expiry_replay_claim_operation_id,
     artifact_hold_expiry_request_digest,
 )
+from .lease import LeaseContractError, LeaseGrant, renew_lease, validate_lease_write
 from .reconciliation import (
     ReconciliationClaimOperation,
     ReconciliationDueKind,
@@ -50,12 +51,16 @@ from .task import (
 )
 
 __all__ = [
+    "LeaseContractError",
+    "LeaseGrant",
     "TaskAggregate",
     "TaskClaimDecision",
     "TaskClaimKey",
     "TaskClaimOutcome",
     "TaskContractError",
     "evaluate_claim",
+    "renew_lease",
+    "validate_lease_write",
     "ArtifactHoldExpiryCandidate",
     "ArtifactHoldExpiryCandidateLedgerEntry",
     "ArtifactHoldExpiryCASState",
