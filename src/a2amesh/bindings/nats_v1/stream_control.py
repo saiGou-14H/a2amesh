@@ -113,7 +113,7 @@ class StreamOpenRequestV1:
         _validate_safe_token("streamOpenId", self.stream_open_id)
         _validate_safe_token("taskId", self.task_id)
         _validate_safe_token("callerInstanceId", self.caller_instance_id)
-        if not isinstance(self.operation, Operation) or self.operation not in _STREAMING_OPERATIONS:
+        if type(self.operation) is not Operation or self.operation not in _STREAMING_OPERATIONS:
             raise BindingValidationError("stream open operation must be streaming")
         _validate_digest("requestDigest", self.request_digest)
         _validate_timestamp("expiresAt", self.expires_at)

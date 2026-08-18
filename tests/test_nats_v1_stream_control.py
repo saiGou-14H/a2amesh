@@ -71,6 +71,15 @@ class ClaimedDigestContext:
         return StreamOpenDigestContextV1
 
 
+class MutableOperation:
+    def __init__(self) -> None:
+        self.value = Operation.SEND_STREAMING_MESSAGE.value
+
+    @property
+    def __class__(self):
+        return Operation
+
+
 def test_direct_control_result_rejects_forged_state_string() -> None:
     data = fixture("control_result")
     data["currentState"] = ForgedStateString("NOT-A-STATE", "ACTIVE")
@@ -109,6 +118,12 @@ def test_digest_context_requires_exact_trusted_type() -> None:
             config_generation=request.config_generation,
             digest_context=ClaimedDigestContext(),  # type: ignore[arg-type]
         )
+
+
+def test_direct_stream_open_constructor_requires_exact_operation_type() -> None:
+    request = StreamOpenRequestV1.from_dict(fixture("open_request"))
+    with pytest.raises(BindingValidationError, match="operation"):
+        replace(request, operation=MutableOperation())  # type: ignore[arg-type]
 
 
 @pytest.mark.parametrize(

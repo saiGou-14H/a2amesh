@@ -310,7 +310,7 @@ class StreamControlAuthVerifier:
         open_digest_context: StreamOpenDigestContextV1 | None = None,
         now: datetime | None = None,
     ) -> VerifiedBindingIdentity:
-        if not isinstance(envelope, StreamControlEnvelopeV1):
+        if type(envelope) is not StreamControlEnvelopeV1:
             raise BindingValidationError("stream control envelope type is invalid")
         if envelope.operation is not expected_operation:
             raise BindingValidationError("stream control operation does not match handler")

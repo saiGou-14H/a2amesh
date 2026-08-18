@@ -475,6 +475,8 @@ tests/unit/protocol/
 
 截至 2026-08-17 17:05（Asia/Shanghai），C1-1 fix10与C1-3 fix7已分别通过精确独立复审；集成树`bd6f360/7f59869`复审发现3个P2输入边界（control result伪enum、三处timestamp hostile子类、digest context宽泛类型判断），已在独立integration-fix2工作树完成RED→GREEN，当前全量`502 passed, 8 skipped`、8/8；待新checkpoint提交后独立复审，不能标记 `[verified]`。
 
+截至 2026-08-18 08:49（Asia/Shanghai），integration-fix2复审再发现两个P1（direct Operation伪装、stream verifier envelope exact-type顺序）；integration-fix3已补exact gates并通过全量`504 passed, 8 skipped`、8/8，待新checkpoint独立复审。
+
 ### 8.7 退出门禁（C1 整体）
 
 - 11 方法接口存在且有 contract test；

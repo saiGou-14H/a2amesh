@@ -17,6 +17,7 @@ from a2amesh.bindings.nats_v1 import (
     BindingValidationError,
     StreamAckRequestV1,
     StreamCloseRequestV1,
+    StreamControlAuthVerifier,
     StreamControlEnvelopeV1,
     StreamControlOperation,
     StreamOpenRequestV1,
@@ -42,6 +43,33 @@ EXPECTED = {
 
 def fixture(name: str) -> dict[str, Any]:
     return json.loads((FIXTURES / FILES[name]).read_text())
+
+
+class ClaimedEnvelope:
+    @property
+    def __class__(self):
+        return StreamControlEnvelopeV1
+
+    @property
+    def operation(self):
+        raise RuntimeError("forged envelope operation read")
+
+
+@pytest.mark.asyncio
+async def test_stream_verifier_checks_exact_envelope_before_property_reads() -> None:
+    verifier = object.__new__(StreamControlAuthVerifier)
+    with pytest.raises(BindingValidationError, match="envelope type"):
+        await verifier.verify(
+            ClaimedEnvelope(),  # type: ignore[arg-type]
+            expected_operation=StreamControlOperation.ACK,
+            received_subject="",
+            connection_public_key="",
+            expected_target_agent_id="worker",
+            expected_caller_agent_id="caller",
+            expected_caller_instance_id="instance",
+            allowed_reply_prefix="_INBOX.a2amesh.caller.",
+            expected_config_generation=1,
+        )
 
 
 @pytest.mark.parametrize("name", ["open", "ack", "close"])
