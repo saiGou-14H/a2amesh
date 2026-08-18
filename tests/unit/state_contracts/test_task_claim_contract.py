@@ -178,3 +178,23 @@ def test_terminal_task_cannot_transition_back_or_skip_version() -> None:
         completed.transition(protocol.TaskState.TASK_STATE_WORKING)
     with pytest.raises(TaskContractError, match="version"):
         replace(completed, task_version=0).assert_integrity()
+
+
+class ExplodingDigest:
+    def __ne__(self, other: object) -> bool:
+        del other
+        raise RuntimeError("digest comparison must be bounded")
+
+
+def test_corrupt_snapshot_digest_comparison_is_bounded() -> None:
+    corrupt = aggregate()
+    object.__setattr__(corrupt, "_snapshot_digest", ExplodingDigest())
+    with pytest.raises(TaskContractError, match="snapshot digest"):
+        evaluate_claim(None, corrupt)
+
+
+def test_task_type_hints_resolve_lazy_protocol_annotations() -> None:
+    from typing import get_type_hints
+
+    hints = get_type_hints(TaskAggregate)
+    assert hints["task"] is protocol.Task

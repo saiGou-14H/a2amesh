@@ -209,3 +209,23 @@ def test_dispatch_semantics_are_not_bypassable_by_rehashed_or_malformed_state() 
             lease_until_ms=2_000,
             now_ms=1_000,
         )
+
+
+class ExplodingDigest:
+    def __ne__(self, other: object) -> bool:
+        del other
+        raise RuntimeError("digest comparison must be bounded")
+
+
+def test_corrupt_snapshot_digest_comparison_is_bounded() -> None:
+    corrupt = intent()
+    object.__setattr__(corrupt, "_snapshot_digest", ExplodingDigest())
+    with pytest.raises(DispatchContractError, match="snapshot digest"):
+        claim_dispatch(
+            corrupt,
+            owner_instance_id="dispatcher-01",
+            fencing_token=7,
+            claim_token=CLAIM_ID_A,
+            lease_until_ms=2_000,
+            now_ms=1_000,
+        )

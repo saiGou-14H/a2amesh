@@ -189,6 +189,59 @@ def test_next_publishable_validates_every_existing_suffix_before_selecting_head(
         next_publishable((malformed_seq,), task_id="task-01", published_seq=0)
 
 
+def test_next_publishable_validates_complete_sequence_after_head_of_line() -> None:
+    first = event(1)
+    with pytest.raises(OutboxContractError, match="contiguous"):
+        next_publishable((first, event(3)), task_id="task-01", published_seq=0)
+    with pytest.raises(OutboxContractError, match="contiguous"):
+        next_publishable((first, first), task_id="task-01", published_seq=0)
+
+    published = mark_published(
+        claim_event(
+            first,
+            owner_instance_id="relay-01",
+            fencing_token=7,
+            claim_token=CLAIM_ID,
+            lease_until_ms=2_000,
+            now_ms=1_000,
+        ),
+        owner_instance_id="relay-01",
+        fencing_token=7,
+        claim_token=CLAIM_ID,
+        now_ms=1_500,
+    )
+    with pytest.raises(OutboxContractError, match="contiguous"):
+        next_publishable(
+            (published, event(2), event(4)),
+            task_id="task-01",
+            published_seq=1,
+        )
+
+
+def test_append_event_only_accepts_new_pending_lifecycle_entries() -> None:
+    claimed = claim_event(
+        event(1),
+        owner_instance_id="relay-01",
+        fencing_token=7,
+        claim_token=CLAIM_ID,
+        lease_until_ms=2_000,
+        now_ms=1_000,
+    )
+    with pytest.raises(OutboxContractError, match="PENDING"):
+        append_event((), claimed)
+    published = mark_published(
+        claimed,
+        owner_instance_id="relay-01",
+        fencing_token=7,
+        claim_token=CLAIM_ID,
+        now_ms=1_500,
+    )
+    with pytest.raises(OutboxContractError, match="PENDING"):
+        append_event((), published)
+    with pytest.raises(OutboxContractError, match="iterable"):
+        append_event(object(), event(1))  # type: ignore[arg-type]
+
+
 def test_wrong_runtime_objects_fail_with_outbox_contract_error() -> None:
     with pytest.raises(OutboxContractError):
         next_publishable((object(),), task_id="task-01", published_seq=0)
@@ -240,6 +293,19 @@ class ExplodingInt(int):
     def __format__(self, spec: str) -> str:
         del spec
         raise RuntimeError("format must not run")
+
+
+class ExplodingDigest:
+    def __ne__(self, other: object) -> bool:
+        del other
+        raise RuntimeError("digest comparison must be bounded")
+
+
+def test_corrupt_snapshot_digest_comparison_is_bounded() -> None:
+    corrupt = event(1)
+    object.__setattr__(corrupt, "_snapshot_digest", ExplodingDigest())
+    with pytest.raises(OutboxContractError, match="snapshot digest"):
+        next_publishable((corrupt,), task_id="task-01", published_seq=0)
 
 
 def test_factory_gates_types_before_event_id_formatting() -> None:

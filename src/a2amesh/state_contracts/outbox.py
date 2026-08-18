@@ -130,6 +130,8 @@ class OutboxEvent:
 
     def assert_integrity(self) -> None:
         self._assert_semantics()
+        if type(self._snapshot_digest) is not str:
+            raise OutboxContractError("snapshot digest must be plain text")
         if self._compute_digest() != self._snapshot_digest:
             raise OutboxContractError("outbox snapshot digest mismatch")
 
@@ -166,7 +168,10 @@ def create_outbox_event(
 
 
 def append_event(events: Iterable[OutboxEvent], event: OutboxEvent) -> tuple[OutboxEvent, ...]:
-    existing = tuple(events)
+    try:
+        existing = tuple(events)
+    except Exception as exc:
+        raise OutboxContractError("existing outbox entries must be iterable") from exc
     if type(event) is not OutboxEvent:
         raise OutboxContractError("event must be OutboxEvent")
     event.assert_integrity()
@@ -184,6 +189,8 @@ def append_event(events: Iterable[OutboxEvent], event: OutboxEvent) -> tuple[Out
         expected = sequences[-1] + 1
     else:
         expected = 1
+    if event.state is not OutboxState.PENDING:
+        raise OutboxContractError("appended outbox event must start in PENDING state")
     if event.event_seq != expected:
         raise OutboxContractError("outbox event sequence must be contiguous")
     return existing + (event,)
@@ -203,10 +210,13 @@ def next_publishable(
         (event for event in events if event.task_id == task_id),
         key=lambda event: event.event_seq,
     )
+    expected_seq = 1
+    for event in candidates:
+        if event.event_seq != expected_seq:
+            raise OutboxContractError("outbox sequence is not contiguous")
+        expected_seq += 1
     completed = 0
     for event in candidates:
-        if event.event_seq != completed + 1:
-            raise OutboxContractError("outbox sequence is not contiguous")
         if event.state is not OutboxState.PUBLISHED:
             break
         completed = event.event_seq

@@ -36,6 +36,12 @@ class ExplodingBool:
         raise RuntimeError("lease snapshot truthiness must not run")
 
 
+class ExplodingDigest:
+    def __ne__(self, other: object) -> bool:
+        del other
+        raise RuntimeError("digest comparison must be bounded")
+
+
 def grant(**changes: object) -> LeaseGrant:
     values = BASE | changes
     return LeaseGrant(**values)
@@ -67,6 +73,7 @@ def test_renew_requires_same_owner_and_fence_and_only_extends() -> None:
         owner_instance_id="instance-01",
         fencing_token=7,
         lease_until_ms=3_000,
+        now_ms=1_500,
     )
     assert renewed.lease_until_ms == 3_000
     assert renewed.attempt == current.attempt
@@ -79,6 +86,7 @@ def test_renew_requires_same_owner_and_fence_and_only_extends() -> None:
             owner_instance_id="instance-01",
             fencing_token=7,
             lease_until_ms=3_000,
+        now_ms=1_500,
         )
     with pytest.raises(LeaseContractError, match="fence"):
         renew_lease(
@@ -87,6 +95,7 @@ def test_renew_requires_same_owner_and_fence_and_only_extends() -> None:
             owner_instance_id="instance-01",
             fencing_token=6,
             lease_until_ms=3_000,
+        now_ms=1_500,
         )
     with pytest.raises(LeaseContractError, match="extend"):
         renew_lease(
@@ -95,6 +104,7 @@ def test_renew_requires_same_owner_and_fence_and_only_extends() -> None:
             owner_instance_id="instance-01",
             fencing_token=7,
             lease_until_ms=1_500,
+            now_ms=1_500,
         )
 
     with pytest.raises(LeaseContractError, match="owner_principal_id"):
@@ -104,6 +114,16 @@ def test_renew_requires_same_owner_and_fence_and_only_extends() -> None:
             owner_instance_id="instance-01",
             fencing_token=7,
             lease_until_ms=3_000,
+        now_ms=1_500,
+        )
+    with pytest.raises(LeaseContractError, match="expired"):
+        renew_lease(
+            current,
+            owner_principal_id="agent:caller",
+            owner_instance_id="instance-01",
+            fencing_token=7,
+            lease_until_ms=3_000,
+            now_ms=2_000,
         )
 
 
@@ -178,3 +198,16 @@ def test_lease_text_unicode_and_snapshot_sentinel_are_bounded() -> None:
         grant(owner_instance_id="\ud800")
     with pytest.raises(LeaseContractError, match="snapshot digest"):
         LeaseGrant(**BASE, _snapshot_digest=ExplodingBool())  # type: ignore[arg-type]
+
+    corrupt = grant()
+    object.__setattr__(corrupt, "_snapshot_digest", ExplodingDigest())
+    with pytest.raises(LeaseContractError, match="snapshot digest"):
+        validate_lease_write(
+            corrupt,
+            owner_principal_id="agent:caller",
+            owner_instance_id="instance-01",
+            fencing_token=7,
+            attempt=1,
+            config_generation=3,
+            now_ms=1_500,
+        )

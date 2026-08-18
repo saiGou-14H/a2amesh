@@ -102,6 +102,8 @@ class LeaseGrant:
 
     def assert_integrity(self) -> None:
         self._assert_semantics()
+        if type(self._snapshot_digest) is not str:
+            raise LeaseContractError("lease snapshot digest must be plain text")
         if self._compute_digest() != self._snapshot_digest:
             raise LeaseContractError("lease snapshot digest mismatch")
 
@@ -121,6 +123,7 @@ def renew_lease(
     owner_instance_id: str,
     fencing_token: int,
     lease_until_ms: int,
+    now_ms: int,
 ) -> LeaseGrant:
     if type(current) is not LeaseGrant:
         raise LeaseContractError("current lease must be LeaseGrant")
@@ -135,6 +138,9 @@ def renew_lease(
     if type(fencing_token) is not int or fencing_token != current.fencing_token:
         raise LeaseContractError("lease fence does not match")
     _integer(lease_until_ms, "lease_until_ms")
+    _integer(now_ms, "now_ms")
+    if now_ms < current.issued_at_ms or now_ms >= current.lease_until_ms:
+        raise LeaseContractError("lease is expired")
     if lease_until_ms <= current.lease_until_ms:
         raise LeaseContractError("renewal must extend the lease")
     return replace(current, lease_until_ms=lease_until_ms, _snapshot_digest="")

@@ -14,8 +14,16 @@ from typing import TYPE_CHECKING, Any
 
 import rfc8785
 
+
+class _ProtocolProxy:
+    def __getattr__(self, name: str) -> object:
+        return getattr(_protocol(), name)
+
+
 if TYPE_CHECKING:
     from a2amesh import protocol
+else:
+    globals()["protocol"] = _ProtocolProxy()
 
 _MAX_JSON_SAFE_INTEGER = 9_007_199_254_740_991
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -190,6 +198,8 @@ class TaskAggregate:
 
     def assert_integrity(self) -> None:
         self._assert_semantics()
+        if type(self._snapshot_digest) is not str:
+            raise TaskContractError("task aggregate snapshot digest must be plain text")
         if self._compute_snapshot_digest() != self._snapshot_digest:
             raise TaskContractError("task aggregate snapshot digest mismatch")
 

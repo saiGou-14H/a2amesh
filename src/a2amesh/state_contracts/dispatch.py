@@ -134,6 +134,8 @@ class DispatchIntent:
 
     def assert_integrity(self) -> None:
         self._assert_semantics()
+        if type(self._snapshot_digest) is not str:
+            raise DispatchContractError("dispatch snapshot digest must be plain text")
         if self._compute_digest() != self._snapshot_digest:
             raise DispatchContractError("dispatch snapshot digest mismatch")
 

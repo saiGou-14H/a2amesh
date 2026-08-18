@@ -517,6 +517,8 @@ tests/unit/protocol/
 
 截至 2026-08-19 00:51（Asia/Shanghai），fix4复审确认`task.py`自身顶层protocol导入仍使fresh direct task import传递加载`random`；outbox-fix5改为TYPE_CHECKING声明与运行时惰性protocol解析，task/facade fresh import均无SDK/随机传递，相关probe与全量`537 passed, 8 skipped`、8/8通过，待checkpoint/独立复审。
 
+截至 2026-08-19 01:26（Asia/Shanghai），fix5独立复审`BLOCKED`：发现next_publishable未验证HOL后缀、append_event可直接写CLAIMED/PUBLISHED、renew_lease缺now_ms，以及四路径恶意snapshot比较异常和lazy protocol反射NameError。fix6以RED回归闭合上述边界：完整序列先验、append仅PENDING、续租有效窗口、plain digest sentinel、task protocol proxy；当前543 passed/8 skipped、8/8，待checkpoint/独立复审。
+
 ### 9.3 顺序
 
 1. Redis config 和 async client。
