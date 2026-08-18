@@ -40,8 +40,22 @@ from .reconciliation import (
     reconciliation_due_operation_preimage,
     system_claim_identity,
 )
+from .task import (
+    TaskAggregate,
+    TaskClaimDecision,
+    TaskClaimKey,
+    TaskClaimOutcome,
+    TaskContractError,
+    evaluate_claim,
+)
 
 __all__ = [
+    "TaskAggregate",
+    "TaskClaimDecision",
+    "TaskClaimKey",
+    "TaskClaimOutcome",
+    "TaskContractError",
+    "evaluate_claim",
     "ArtifactHoldExpiryCandidate",
     "ArtifactHoldExpiryCandidateLedgerEntry",
     "ArtifactHoldExpiryCASState",

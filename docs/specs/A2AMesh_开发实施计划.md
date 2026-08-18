@@ -497,6 +497,8 @@ tests/unit/protocol/
 
 创建 `state/` 目录、Lua、integration tests、Docker test fixture。
 
+截至 2026-08-18 12:01（Asia/Shanghai），C2-S第一个纯合同子模块已在独立worktree完成：新增`state_contracts/task.py`与facade导出，使用官方`protocol.Task`防御性snapshot，定义TaskClaimKey幂等摘要、CREATED/REPLAY/CONFLICT决策、taskVersion/eventSeq和官方TaskState迁移。模块不导入Redis/NATS，不代表Redis CAS、持久化、重启或多进程验收。
+
 ### 9.3 顺序
 
 1. Redis config 和 async client。
