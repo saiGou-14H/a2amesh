@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import traceback
 
 import pytest
 
@@ -9,21 +10,42 @@ from a2amesh.state.config import RedisConfig, RedisConfigError
 
 
 class FakePool:
-    def __init__(self, *, ping_error: Exception | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        ping_error: BaseException | None = None,
+        ping_result: bool = True,
+        close_error: Exception | None = None,
+        cancel_close: bool = False,
+        execute_error: Exception | None = None,
+    ) -> None:
         self.ping_error = ping_error
+        self.ping_result = ping_result
+        self.close_error = close_error
+        self.cancel_close = cancel_close
+        self.execute_error = execute_error
         self.closed = False
+        self.close_calls = 0
         self.commands: list[tuple[str, tuple[object, ...]]] = []
 
     async def ping(self) -> bool:
         if self.ping_error is not None:
             raise self.ping_error
-        return True
+        return self.ping_result
 
     async def execute_command(self, command: str, *args: object) -> str:
         self.commands.append((command, args))
+        if self.execute_error is not None:
+            raise self.execute_error
         return "OK"
 
     async def aclose(self) -> None:
+        self.close_calls += 1
+        if self.cancel_close:
+            self.cancel_close = False
+            raise asyncio.CancelledError
+        if self.close_error is not None:
+            raise self.close_error
         self.closed = True
 
 
@@ -69,6 +91,11 @@ def test_redis_config_defaults_and_env_are_strict() -> None:
         {"url": "http://localhost:6379/0"},
         {"url": "redis://"},
         {"url": "redis://localhost/0?bad=%zz"},
+        {"url": "redis://localhost/0?decode_responses=True"},
+        {"url": "redis://localhost:not-a-port/0"},
+        {"url": "redis://localhost:65536/0"},
+        {"url": "redis://[::1/0"},
+        {"url": "redis://localhost/0#"},
         {"mesh_id": "mesh with spaces"},
         {"mesh_id": "mesh{hash-tag}"},
         {"connect_timeout_ms": 0},
@@ -87,6 +114,15 @@ def test_redis_config_rejects_bad_environment_integers() -> None:
         RedisConfig.from_env({"A2AMESH_REDIS_CONNECT_TIMEOUT_MS": "nope"})
     with pytest.raises(RedisConfigError, match="MESH_ID"):
         RedisConfig.from_env({"A2AMESH_MESH_ID": ""})
+
+
+def test_redis_config_repr_never_exposes_url_path_or_credentials() -> None:
+    rendered = repr(
+        RedisConfig(url="redis://user:path-secret@localhost:6379/db-secret")
+    )
+    assert "user" not in rendered
+    assert "path-secret" not in rendered
+    assert "db-secret" not in rendered
 
 
 @pytest.mark.asyncio
@@ -120,3 +156,101 @@ async def test_client_ping_failure_closes_pool_and_redacts_connection_details() 
     assert pool.closed is True
     with pytest.raises(RedisClientError, match="connection failed"):
         await client.connect()
+
+
+@pytest.mark.asyncio
+async def test_client_rejects_false_ping_before_publishing_pool() -> None:
+    pool = FakePool(ping_result=False)
+    client = RedisClient(RedisConfig(), redis_factory=FakeRedisFactory(pool))
+
+    with pytest.raises(RedisClientError, match="PING"):
+        await client.connect()
+    assert client.connected is False
+    assert pool.closed is True
+
+
+@pytest.mark.asyncio
+async def test_close_failure_and_cancellation_retain_pool_for_retry() -> None:
+    close_error = RuntimeError("URL=redis://user:secret@host/0")
+    pool = FakePool(close_error=close_error)
+    client = RedisClient(RedisConfig(), redis_factory=FakeRedisFactory(pool))
+    await client.connect()
+
+    with pytest.raises(RedisClientError) as raised:
+        await client.close()
+    assert raised.value.__cause__ is None
+    assert pool.close_calls == 1
+    pool.close_error = None
+    await client.close()
+    assert pool.close_calls == 2
+    assert pool.closed is True
+
+    cancelled_pool = FakePool(cancel_close=True)
+    cancelled = RedisClient(
+        RedisConfig(), redis_factory=FakeRedisFactory(cancelled_pool)
+    )
+    await cancelled.connect()
+    with pytest.raises(asyncio.CancelledError):
+        await cancelled.close()
+    await cancelled.close()
+    assert cancelled_pool.close_calls == 2
+    assert cancelled_pool.closed is True
+
+
+@pytest.mark.asyncio
+async def test_connect_cleanup_failure_preserves_primary_error_and_pool_ownership() -> None:
+    pool = FakePool(
+        ping_error=RuntimeError("URL=redis://user:secret@host/0"),
+        close_error=RuntimeError("ARG=cleanup-secret"),
+    )
+    client = RedisClient(RedisConfig(), redis_factory=FakeRedisFactory(pool))
+
+    with pytest.raises(RedisClientError, match="connection failed") as raised:
+        await client.connect()
+    assert raised.value.__cause__ is None
+    assert raised.value.__context__ is None
+    rendered = "".join(
+        traceback.format_exception(
+            type(raised.value), raised.value, raised.value.__traceback__
+        )
+    )
+    assert "secret" not in rendered
+    pool.close_error = None
+    await client.close()
+    assert pool.close_calls == 2
+    assert pool.closed is True
+
+
+@pytest.mark.asyncio
+async def test_command_errors_never_expose_command_arguments_or_cause() -> None:
+    pool = FakePool(execute_error=RuntimeError("ARG=payload-secret"))
+    client = RedisClient(RedisConfig(), redis_factory=FakeRedisFactory(pool))
+
+    with pytest.raises(RedisClientError) as raised:
+        await client.execute("GET", b"payload-secret")
+    assert raised.value.__cause__ is None
+    assert raised.value.__context__ is None
+    rendered = "".join(traceback.format_exception_only(type(raised.value), raised.value))
+    assert "payload-secret" not in rendered
+    assert "GET" not in str(raised.value)
+    with pytest.raises(RedisClientError, match="single token") as invalid:
+        await client.execute("GET SECRET", b"payload-secret")
+    assert "GET SECRET" not in str(invalid.value)
+
+
+@pytest.mark.asyncio
+async def test_connect_cancellation_survives_cleanup_failure_and_retains_pool() -> None:
+    pool = FakePool(
+        ping_error=asyncio.CancelledError(),
+        close_error=RuntimeError("cleanup-secret"),
+    )
+    client = RedisClient(RedisConfig(), redis_factory=FakeRedisFactory(pool))
+
+    with pytest.raises(asyncio.CancelledError):
+        await client.connect()
+    assert client.connected is False
+    assert pool.close_calls == 1
+    pool.close_error = None
+    await client.close()
+    assert pool.close_calls == 2
+    assert pool.closed is True

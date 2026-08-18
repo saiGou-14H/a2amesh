@@ -136,11 +136,20 @@ def _validate_url(value: str) -> None:
             )
         ):
             raise RedisConfigError("Redis URL contains an invalid percent escape")
-    parsed = urlsplit(value)
-    if parsed.scheme not in {"redis", "rediss"} or not parsed.hostname:
+    if "?" in value:
+        raise RedisConfigError("Redis URL query parameters are not allowed")
+    if "#" in value:
+        raise RedisConfigError("Redis URL fragments are not allowed")
+    try:
+        parsed = urlsplit(value)
+        hostname = parsed.hostname
+        port = parsed.port
+    except ValueError:
+        raise RedisConfigError("Redis URL authority or port is invalid") from None
+    if parsed.scheme not in {"redis", "rediss"} or not hostname:
         raise RedisConfigError("Redis URL must use redis:// or rediss:// with a hostname")
-    if parsed.fragment:
-        raise RedisConfigError("Redis URL must not contain a fragment")
+    if port is not None and not 1 <= port <= 65_535:
+        raise RedisConfigError("Redis URL port must be in [1, 65535]")
 
 
 def _validate_mesh_id(value: str) -> None:
@@ -165,6 +174,6 @@ def _redacted_url(value: str) -> str:
             host = f"[{host}]"
         if parsed.port is not None:
             host = f"{host}:{parsed.port}"
-        return f"{parsed.scheme}://{host}{parsed.path}"
+        return f"{parsed.scheme}://{host}"
     except ValueError:
         return "<invalid>"

@@ -25,10 +25,10 @@ jobs:
           enable-cache: true
           python-version: "3.11"
       - name: Install locked test environment
-        run: uv sync --locked --extra test
+        run: uv sync --locked --extra test --extra state
       - name: Run machine-readable gates
         run: >-
-          uv run --locked --extra test python scripts/run_ci.py
+          uv run --locked --extra test --extra state python scripts/run_ci.py
           --report .ci-artifacts/ci-report.json
       - name: Upload CI report
         if: always()
