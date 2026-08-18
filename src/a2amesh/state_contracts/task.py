@@ -36,7 +36,10 @@ def _require_text(value: object, label: str) -> str:
         raise TaskContractError(f"{label} must be a non-empty plain string")
     if not _SAFE_TEXT.fullmatch(value):
         raise TaskContractError(f"{label} contains a forbidden control character")
-    value.encode("utf-8")
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise TaskContractError(f"{label} is not valid UTF-8 text") from exc
     return value
 
 
@@ -144,8 +147,10 @@ class TaskAggregate:
         snapshot.CopyFrom(self.task)
         object.__setattr__(self, "task", snapshot)
         digest = self._compute_snapshot_digest()
-        if self._snapshot_digest:
-            if type(self._snapshot_digest) is not str or self._snapshot_digest != digest:
+        if type(self._snapshot_digest) is not str:
+            raise TaskContractError("task aggregate snapshot digest must be plain text")
+        if self._snapshot_digest != "":
+            if self._snapshot_digest != digest:
                 raise TaskContractError("task aggregate snapshot digest mismatch")
         else:
             object.__setattr__(self, "_snapshot_digest", digest)
@@ -214,6 +219,10 @@ def evaluate_claim(
         raise TaskContractError("requested claim must be TaskAggregate")
     requested.assert_integrity()
     if existing is None:
+        if requested.task.status.state != protocol.TaskState.TASK_STATE_SUBMITTED:
+            raise TaskContractError("CREATED claim must start from SUBMITTED TaskState")
+        if requested.task_version != 1 or requested.event_seq != 0:
+            raise TaskContractError("CREATED claim must start at taskVersion=1/eventSeq=0")
         return TaskClaimDecision(TaskClaimOutcome.CREATED, requested)
     if type(existing) is not TaskAggregate:
         raise TaskContractError("existing claim must be TaskAggregate or None")

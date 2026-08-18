@@ -501,6 +501,8 @@ tests/unit/protocol/
 
 截至 2026-08-18 12:31（Asia/Shanghai），C2-S task复审发现P1：aggregate创建/claim边界接受官方`TASK_STATE_UNSPECIFIED=0`及未知整数state；task-fix1在aggregate构造和assert_integrity前调用唯一官方`legal_task_state_transitions`，新增state=0/99回归，当前全量`511 passed, 8 skipped`、8/8。
 
+截至 2026-08-18 12:58（Asia/Shanghai），task+lease复审发现owner hostile string、CREATED非SUBMITTED/非初始(1,0)、snapshot sentinel truthiness和lone surrogate四个边界；lease-fix1补exact owner、CREATED初态、seal sentinel与Unicode合同，当前全量`519 passed, 8 skipped`、8/8，待独立复审。
+
 ### 9.3 顺序
 
 1. Redis config 和 async client。

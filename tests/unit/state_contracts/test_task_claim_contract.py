@@ -81,6 +81,11 @@ class MutableText(str):
     pass
 
 
+class ExplodingBool:
+    def __bool__(self) -> bool:
+        raise RuntimeError("snapshot truthiness must not run")
+
+
 def test_aggregate_owns_a_task_snapshot_and_stable_digest() -> None:
     source = submitted_task()
     value = aggregate(task=source)
@@ -113,6 +118,26 @@ def test_same_claim_and_same_command_is_idempotent_but_digest_conflict_is_reject
     conflict = evaluate_claim(existing, different_request)
     assert conflict.outcome is TaskClaimOutcome.CONFLICT
     assert conflict.aggregate is existing
+
+
+def test_created_claim_requires_submitted_state_and_initial_counters() -> None:
+    working = aggregate().transition(protocol.TaskState.TASK_STATE_WORKING)
+    with pytest.raises(TaskContractError, match="CREATED"):
+        evaluate_claim(None, working)
+    with pytest.raises(TaskContractError, match="CREATED"):
+        evaluate_claim(None, replace(aggregate(), task_version=2, _snapshot_digest=""))
+
+
+def test_task_text_and_snapshot_sentinel_are_bounded() -> None:
+    with pytest.raises(TaskContractError, match="UTF-8"):
+        claim_key(request_digest="\ud800" + "1" * 63)
+    with pytest.raises(TaskContractError, match="snapshot digest"):
+        TaskAggregate(
+            task=submitted_task(),
+            claim_key=claim_key(),
+            command_digest=COMMAND_DIGEST,
+            _snapshot_digest=ExplodingBool(),  # type: ignore[arg-type]
+        )
 
 
 def test_empty_claim_creates_and_transition_advances_version_and_event() -> None:
