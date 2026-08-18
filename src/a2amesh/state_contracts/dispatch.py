@@ -198,6 +198,7 @@ def mark_dispatch_sent(
     owner_instance_id: str,
     fencing_token: int,
     claim_token: str,
+    attempt: int,
     now_ms: int,
 ) -> DispatchIntent:
     if type(current) is not DispatchIntent:
@@ -207,6 +208,7 @@ def mark_dispatch_sent(
         raise DispatchContractError("mark sent requires CLAIMED state")
     _text(owner_instance_id, "owner_instance_id")
     _text(claim_token, "claim_token")
+    _integer(attempt, "attempt", minimum=1)
     _integer(now_ms, "now_ms")
     if type(fencing_token) is not int or fencing_token != current.fencing_token:
         raise DispatchContractError("fence does not match")
@@ -214,6 +216,8 @@ def mark_dispatch_sent(
         raise DispatchContractError("owner does not match")
     if claim_token != current.claim_token:
         raise DispatchContractError("claim token does not match")
+    if attempt != current.attempt:
+        raise DispatchContractError("attempt does not match")
     if now_ms >= current.lease_until_ms:
         raise DispatchContractError("dispatch lease is expired")
     return replace(current, state=DispatchIntentState.SENT, _snapshot_digest="")
@@ -225,6 +229,7 @@ def accept_dispatch(
     owner_instance_id: str,
     fencing_token: int,
     claim_token: str,
+    attempt: int,
     now_ms: int,
 ) -> DispatchIntent:
     if type(current) is not DispatchIntent:
@@ -232,6 +237,7 @@ def accept_dispatch(
     current.assert_integrity()
     _text(owner_instance_id, "owner_instance_id")
     _text(claim_token, "claim_token")
+    _integer(attempt, "attempt", minimum=1)
     _integer(now_ms, "now_ms")
     if type(fencing_token) is not int or fencing_token != current.fencing_token:
         raise DispatchContractError("fence does not match")
@@ -239,6 +245,8 @@ def accept_dispatch(
         raise DispatchContractError("owner does not match")
     if claim_token != current.claim_token:
         raise DispatchContractError("claim token does not match")
+    if attempt != current.attempt:
+        raise DispatchContractError("attempt does not match")
     if current.state is DispatchIntentState.ACCEPTED:
         return current
     if current.state is not DispatchIntentState.SENT:

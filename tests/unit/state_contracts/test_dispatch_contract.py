@@ -61,6 +61,7 @@ def test_claim_send_accept_is_strict_and_idempotent() -> None:
         owner_instance_id="dispatcher-01",
         fencing_token=7,
         claim_token=CLAIM_ID_A,
+        attempt=1,
         now_ms=1_500,
     )
     assert sent.state is DispatchIntentState.SENT
@@ -69,6 +70,7 @@ def test_claim_send_accept_is_strict_and_idempotent() -> None:
         owner_instance_id="dispatcher-01",
         fencing_token=7,
         claim_token=CLAIM_ID_A,
+        attempt=1,
         now_ms=1_500,
     )
     assert accepted.state is DispatchIntentState.ACCEPTED
@@ -77,6 +79,7 @@ def test_claim_send_accept_is_strict_and_idempotent() -> None:
         owner_instance_id="dispatcher-01",
         fencing_token=7,
         claim_token=CLAIM_ID_A,
+        attempt=1,
         now_ms=1_500,
     ) is accepted
 
@@ -86,6 +89,7 @@ def test_claim_send_accept_is_strict_and_idempotent() -> None:
             owner_instance_id="dispatcher-01",
             fencing_token=7,
             claim_token=CLAIM_ID_A,
+            attempt=1,
             now_ms=1_500,
         )
     with pytest.raises(DispatchContractError, match="owner"):
@@ -94,6 +98,7 @@ def test_claim_send_accept_is_strict_and_idempotent() -> None:
             owner_instance_id="other",
             fencing_token=7,
             claim_token=CLAIM_ID_A,
+            attempt=1,
             now_ms=1_500,
         )
     with pytest.raises(DispatchContractError, match="token"):
@@ -102,6 +107,7 @@ def test_claim_send_accept_is_strict_and_idempotent() -> None:
             owner_instance_id="dispatcher-01",
             fencing_token=7,
             claim_token=CLAIM_ID_B,
+            attempt=1,
             now_ms=1_500,
         )
 
@@ -143,6 +149,16 @@ def test_reclaim_requires_expiry_and_monotonically_invalidates_old_claim() -> No
             owner_instance_id="dispatcher-01",
             fencing_token=7,
             claim_token=CLAIM_ID_A,
+            attempt=1,
+            now_ms=2_500,
+        )
+    with pytest.raises(DispatchContractError, match="attempt"):
+        mark_dispatch_sent(
+            reclaimed,
+            owner_instance_id="dispatcher-02",
+            fencing_token=8,
+            claim_token=CLAIM_ID_B,
+            attempt=1,
             now_ms=2_500,
         )
 

@@ -509,6 +509,8 @@ tests/unit/protocol/
 
 截至 2026-08-18 22:26（Asia/Shanghai），outbox/dispatch独立复审发现5个P1：publish缺claim token/lease、append未验证已有序列、watermark可越过HOL、factory先格式化再类型门禁、dispatch SENT/ACCEPTED缺token绑定；outbox-fix1补齐并通过全量`532 passed, 8 skipped`、8/8，待新checkpoint独立复审。
 
+截至 2026-08-18 22:47（Asia/Shanghai），outbox-fix1复审又确认dispatch SENT/ACCEPTED缺attempt绑定；outbox-fix2为两条dispatch入口增加exact attempt参数/校验，相关回归与全量`532 passed, 8 skipped`、8/8通过，待新checkpoint独立复审。
+
 ### 9.3 顺序
 
 1. Redis config 和 async client。
