@@ -279,7 +279,7 @@ def test_bootstrap_registry_is_closed_and_has_no_arbitrary_suffix_kind() -> None
 
 
 def test_state_facade_exports_key_builder_lazily_without_loading_redis() -> None:
-    script = r'''
+    script = r"""
 import sys
 import a2amesh.state as state
 
@@ -303,7 +303,7 @@ assert "a2amesh.state.key_builder" in sys.modules
 assert "a2amesh.state.client" not in sys.modules
 assert "a2amesh.state.config" not in sys.modules
 assert "redis" not in sys.modules
-'''
+"""
     result = subprocess.run(  # noqa: S603 - sys.executable is the trusted test interpreter
         [sys.executable, "-I", "-c", script],
         check=False,

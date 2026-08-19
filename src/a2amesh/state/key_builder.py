@@ -219,9 +219,7 @@ class RedisKeyBuilder:
         template = _TEMPLATES.get(kind)
         if template is None:
             raise KeyBuilderError("key kind is not registered")
-        expected = {
-            segment.name for segment in template if isinstance(segment, _Component)
-        }
+        expected = {segment.name for segment in template if isinstance(segment, _Component)}
         if set(parts) != expected:
             missing = expected - set(parts)
             extra = set(parts) - expected
@@ -300,9 +298,7 @@ def _normalize_mesh_id(value: object) -> str:
     if not normalized or len(normalized) > 128:
         raise KeyBuilderError("mesh_id must contain 1 to 128 normalized characters")
     if any(
-        unicodedata.category(char) in {"Cc", "Cf"}
-        or char.isspace()
-        or char in "{}"
+        unicodedata.category(char) in {"Cc", "Cf"} or char.isspace() or char in "{}"
         for char in normalized
     ):
         raise KeyBuilderError("mesh_id contains a forbidden character")
