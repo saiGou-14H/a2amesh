@@ -3,6 +3,11 @@
 from importlib import import_module
 
 _EXPORT_MODULES = {
+    "KeyBuilderError": ".key_builder",
+    "KeyKind": ".key_builder",
+    "KeyPart": ".key_builder",
+    "KeyPartCodec": ".key_builder",
+    "RedisKeyBuilder": ".key_builder",
     "RedisConfig": ".config",
     "RedisConfigError": ".config",
     "RedisClient": ".client",
