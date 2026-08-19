@@ -526,6 +526,7 @@ tests/unit/protocol/
 截至 2026-08-19 02:23（Asia/Shanghai），纯合同fix6精确树`62b8d1a/00d818`独立复审`PASS`（P1/P2/P3均无），39项focused、全量543 passed/8 skipped、8/8、fresh-import purity与17-case semantic probe通过；已推送`origin/work/c2-s-outbox-contract-fix6`并回读SHA一致。Redis步骤1fix2已从该verified基线重放基础、review remediation、锁定test extra及单一pool ownership四个checkpoint，代码head=`b4bf35d`；当前仅为待文档checkpoint/全量门禁/真实Redis smoke/新独立复审的候选，不含key builder/Lua/Redis Function/NATS或生产验收。
 
 截至 2026-08-20 00:34（Asia/Shanghai），步骤2已形成实现级补充合同[`ADR-038`](../decisions/ADR-038_Redis_Key_Builder_V1.md)：冻结NFC可读`mesh_id` hash tag、typed `KeyPart` codec、bytes输出、17类`claim_auth_request/claim_message` bootstrap模板及fail-closed错误边界；明确admission enqueue sequence counter、任意opaque ID可逆编码、全量Key schema和Redis Cluster仍为待决策/后续范围。当前仅为ADR candidate，尚未实现、门禁或独立复审；Redis步骤1的两轮review因provider/迭代失败均只能记`INCONCLUSIVE`，不得继承为PASS。
+截至 2026-08-20 02:05（Asia/Shanghai），步骤2纯 Key builder bootstrap 已在代码 checkpoint `eb254c0e24da2d1200475b1d2a8a07b323134658`（tree `f0df9a059e415f36569f5565e1b692c887c2c519`）完成实现、touched format、Ruff、focused `73 passed`、全量 `641 passed, 8 skipped` 与独立安全/import probe；`deleg_e66f62a0` 对同一精确 tree 以 `status=completed`、`exit_reason=completed` 返回 `VERDICT=PASS`、P1/P2/P3均无。该 Verified 仅适用于纯 Key builder bootstrap，不包含 Redis client、Lua/Redis Function、真实原子 State Service、NATS、Cluster、重启/并发或生产验收；`UD-KB-001`～`UD-KB-005` 仍为后续阻断/未决策项。
 
 ### 9.3 顺序
 

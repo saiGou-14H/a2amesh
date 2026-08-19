@@ -4,7 +4,7 @@
 
 | ID | 决策 | 状态 | 适用阶段 |
 |---|---|---|---|
-| [ADR-038](ADR-038_Redis_Key_Builder_V1.md) | Redis V1 Key builder 命名空间、组件 codec 与 bootstrap 模板 | Accepted for implementation candidate；未实现/未复审 | C2 §9.3 步骤2 |
+| [ADR-038](ADR-038_Redis_Key_Builder_V1.md) | Redis V1 Key builder 命名空间、组件 codec 与 bootstrap 模板 | Verified（代码 `eb254c0` / tree `f0df9a`；独立复审 PASS） | C2 §9.3 步骤2 |
 
 状态词：
 

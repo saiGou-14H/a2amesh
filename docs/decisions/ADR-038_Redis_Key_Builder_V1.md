@@ -1,9 +1,9 @@
 # ADR-038：Redis V1 Key builder 命名空间、组件编码与 bootstrap 模板
 
-> 状态：**Accepted for C2 implementation candidate**
+> 状态：**Verified for C2 §9.3 步骤2 Key builder bootstrap**
 > 日期：2026-08-19
 > 适用范围：C2 / 《A2AMesh 开发实施计划》§9.3 步骤2
-> 实现成熟度：仅冻结实现合同；尚未实现、未门禁、未独立复审
+> 实现成熟度：纯 Key builder bootstrap 已实现、完成门禁并通过精确代码树独立复审；不等于 Redis State Service 整体验收
 > 上游候选：`work/c2-state-redis-config-client-fix2`，`HEAD=803c43a728d6a9a95c53c29a6fc37088a61e9587`，`TREE=cf63586560483925567c656cd08e10c5a4f14565`
 
 ## 1. 决策目的与权威边界
@@ -24,6 +24,19 @@
 | `PLAN` | `docs/specs/A2AMesh_开发实施计划.md` | `4bb6b98f8b5812b79931ec914a8135be45be8c7f6888cf3f9b5c57d8d5a1857f` | 1183 |
 | `OBJECT` | `docs/specs/A2AMesh_AgentCard与协议对象规范_V1.6.md` | `6bee086bbdddc70d9dd7995a8b43d7c52999184b8e557768e9ab94b202d656e4` | 553 |
 | `API` | `docs/specs/A2AMesh_接口请求与响应标准_V1.6.md` | `3d331e9f9745c3f66da7d73e62a451a2ffb2691ada66db06bc374bbe9a4363a3` | 634 |
+
+本表固定 ADR 创建时的权威输入快照，不是当前文件的滚动 manifest；后续实施状态回写不得重算本表并形成 `PLAN`↔ADR 自引用。
+
+### 1.2 实现 checkpoint、门禁与独立复审证据
+
+截至 2026-08-20 02:05（Asia/Shanghai），本 ADR 的纯 Key builder bootstrap 已在以下精确代码树闭合：
+
+- 代码提交：`eb254c0e24da2d1200475b1d2a8a07b323134658`；代码 tree：`f0df9a059e415f36569f5565e1b692c887c2c519`；parent：`599b61f0df0b70f23d790aaf76ee868b74b8edad`；分支：`work/c2-state-key-builder`。
+- 代码范围：`src/a2amesh/state/key_builder.py`、`src/a2amesh/state/__init__.py`、`tests/unit/state/test_key_builder.py`，其中格式 checkpoint 的提交相对 parent 仅改变 `key_builder.py` 与 `test_key_builder.py`，两文件 AST 等价。
+- 精确门禁：touched-file `ruff format --check` 为 `3 files already formatted`；`ruff check src tests` 为 `All checks passed!`；focused 为 `73 passed`；全量 `pytest -q -W error` 为 `641 passed, 8 skipped`；独立 NFC/恶意输入/typed codec/17-template/import-purity probe 通过。
+- 独立复审：`deleg_e66f62a0`，`status=completed`、`exit_reason=completed`，复审同一 HEAD/tree，`VERDICT=PASS`，`P1=0 P2=0 P3=0`，结束时工作树 clean。
+
+以上 Verified 只覆盖纯、无 I/O 的 Key builder bootstrap。它不覆盖 Redis client/config、Lua/Redis Function、`claim_auth_request`、`claim_message`、原子多 Key mutation、Redis Cluster/runtime、NATS、重启/并发或生产部署；这些边界仍由本 ADR 第6节和 `UD-KB-001`～`UD-KB-005` 约束。
 
 ## 2. 已有规范事实
 
@@ -170,4 +183,4 @@ RedisKeyBuilder.render(kind: KeyKind, **parts: KeyPart) -> bytes
 - Redis persistence/restart、双实例竞态或 Cluster；
 - NATS/JetStream、Gateway、Runtime、三机部署或生产就绪。
 
-只有代码、提交后门禁、精确 tree 独立复审都完成后，步骤2候选才能获得自己的 PASS；该 PASS 也不得外推到上述非目标。
+代码、提交后门禁和精确 tree 独立复审均完成后，步骤2纯 Key builder bootstrap 已获得自己的 PASS；该 PASS 仍不得外推到上述非目标。
