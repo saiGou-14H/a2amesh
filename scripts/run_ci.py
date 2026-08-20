@@ -40,6 +40,7 @@ DEFAULT_GATES = (
             "--json",
             "README.md",
             "docs/specs",
+            "docs/decisions",
         ),
     ),
     Gate("sdist-closure", (sys.executable, "scripts/verify_sdist_closure.py")),

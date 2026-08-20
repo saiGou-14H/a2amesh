@@ -61,6 +61,7 @@ def test_default_ci_gate_contract_is_closed() -> None:
     commands = {gate.gate_id: gate.command for gate in runner.DEFAULT_GATES}
     assert "scripts/verify_a2a_fixtures.py" in commands["official-fixtures"]
     assert "scripts/verify_docs_links.py" in commands["docs-links"]
+    assert "docs/decisions" in commands["docs-links"]
     assert "scripts/verify_sdist_closure.py" in commands["sdist-closure"]
     assert "scripts/verify_wheel_resources.py" in commands["wheel-resources"]
     assert "tests" in commands["compileall"]
@@ -88,15 +89,13 @@ def test_ci_workflow_uses_runner_and_uploads_report() -> None:
     assert "scripts/run_ci.py" in workflow
     assert ".ci-artifacts/ci-report.json" in workflow
     assert "actions/upload-artifact" in workflow
-    assert "A2AMESH_REQUIRE_BROWSER_GATE: \"1\"" in workflow
+    assert 'A2AMESH_REQUIRE_BROWSER_GATE: "1"' in workflow
     assert "--extra browser-test" in workflow
     assert "UV_DEFAULT_INDEX: https://mirrors.aliyun.com/pypi/simple/" in workflow
 
 
 def test_active_browser_command_uses_locked_declared_extras() -> None:
-    plan = (REPO_ROOT / "docs" / "specs" / "A2AMesh_开发实施计划.md").read_text(
-        encoding="utf-8"
-    )
+    plan = (REPO_ROOT / "docs" / "specs" / "A2AMesh_开发实施计划.md").read_text(encoding="utf-8")
     assert "--with playwright" not in plan
     assert (
         "uv run --locked --extra test --extra browser-test pytest -q "
@@ -145,3 +144,4 @@ def test_sdist_manifest_includes_ci_and_conformance_sources() -> None:
     assert "include .gitignore" in manifest
     assert "include .github/workflows/ci.yml" in manifest
     assert "recursive-include docs/archive *.md" in manifest
+    assert "recursive-include docs/decisions *.md" in manifest

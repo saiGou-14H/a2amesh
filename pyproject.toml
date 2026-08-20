@@ -49,6 +49,7 @@ where = ["src"]
 [tool.setuptools.package-data]
 "a2amesh.schemas" = ["*.json"]
 "a2amesh.conformance" = ["fixtures/a2a_v1/*.json"]
+"a2amesh.state.scripts" = ["*.lua"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

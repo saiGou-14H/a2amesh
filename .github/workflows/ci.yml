@@ -18,6 +18,20 @@ jobs:
   core-gates:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      A2AMESH_TEST_REDIS_URL: redis://127.0.0.1:6379/15
+      A2AMESH_TEST_REDIS_DESTRUCTIVE: "1"
+    services:
+      redis:
+        image: redis@sha256:02f2cc4882f8bf87c79a220ac958f58c700bdec0dfb9b9ea61b62fb0e8f1bfcf
+        command: redis-server --save "" --appendonly no
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v7

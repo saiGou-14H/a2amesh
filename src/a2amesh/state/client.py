@@ -8,12 +8,17 @@ import re
 from typing import Any, Protocol
 
 from redis import asyncio as redis_asyncio
+from redis.exceptions import NoScriptError
 
 from .config import RedisConfig
 
 
 class RedisClientError(RuntimeError):
     """Raised for client lifecycle, connectivity, or command failures."""
+
+
+class RedisNoScriptError(RedisClientError):
+    """Raised only when Redis proves the requested EVALSHA did not execute."""
 
 
 class _RedisPool(Protocol):
@@ -132,13 +137,21 @@ class RedisClient:
             raise RedisClientError("Redis command must be one non-empty single token")
         pool = await self._pool_for_operation()
         command_failed = False
+        no_script = False
         result: Any = None
         try:
             result = await pool.execute_command(command, *args)
         except asyncio.CancelledError:
             raise
+        except NoScriptError:
+            if command.upper() == "EVALSHA":
+                no_script = True
+            else:
+                command_failed = True
         except Exception:
             command_failed = True
+        if no_script:
+            raise RedisNoScriptError("Redis script is not loaded")
         if command_failed:
             raise RedisClientError("Redis command failed") from None
         return result

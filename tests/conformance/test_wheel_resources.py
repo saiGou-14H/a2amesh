@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
+import importlib.util
+import sys
 import tomllib
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
@@ -24,6 +28,19 @@ EXPECTED_FILES = {
     "official_task_artifact_update.json",
     "official_task_not_found_error.json",
 }
+
+
+def _load_wheel_verifier() -> ModuleType:
+    path = REPO_ROOT / "scripts" / "verify_wheel_resources.py"
+    spec = importlib.util.spec_from_file_location("a2amesh_verify_wheel_resources", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.modules.pop(spec.name, None)
+    return module
 
 
 def test_official_fixture_resources_are_complete_and_readable() -> None:
@@ -59,9 +76,22 @@ def test_test_fixture_directory_has_no_duplicate_official_resources() -> None:
     assert not (EXPECTED_FILES & {path.name for path in legacy_directory.glob("*.json")})
 
 
+def test_wheel_verifier_proves_auth_replay_lua_resource_identity() -> None:
+    verifier = _load_wheel_verifier()
+    expected_digest = hashlib.sha256(
+        (REPO_ROOT / "src/a2amesh/state/scripts/claim_auth_request.lua").read_bytes()
+    ).hexdigest()
+
+    result = verifier.verify_wheel_resources(REPO_ROOT)
+
+    assert f"auth replay Lua sha256={expected_digest}" in result
+
+
 def test_wheel_package_data_and_sdist_manifest_declare_resources() -> None:
     project = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     package_data = project["tool"]["setuptools"]["package-data"]
     assert package_data["a2amesh.conformance"] == ["fixtures/a2a_v1/*.json"]
+    assert package_data["a2amesh.state.scripts"] == ["*.lua"]
     manifest = (REPO_ROOT / "MANIFEST.in").read_text(encoding="utf-8").splitlines()
     assert "recursive-include src/a2amesh/conformance/fixtures *.json" in manifest
+    assert "recursive-include src/a2amesh/state/scripts *.lua" in manifest

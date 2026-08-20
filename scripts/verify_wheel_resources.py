@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Build an isolated wheel and verify its official fixture package resources."""
+"""Build an isolated wheel and verify immutable package resources."""
 
 from __future__ import annotations
 
+import hashlib
 import os
 import shutil
 import subprocess
@@ -16,6 +17,9 @@ from pathlib import Path
 
 class WheelResourceVerificationError(RuntimeError):
     """Raised when the built wheel cannot satisfy the resource contract."""
+
+
+_AUTH_REPLAY_RESOURCE = Path("src/a2amesh/state/scripts/claim_auth_request.lua")
 
 
 def _clean_environment() -> dict[str, str]:
@@ -47,6 +51,14 @@ def _venv_python(environment: Path) -> Path:
 def verify_wheel_resources(repository_root: Path) -> str:
     """Build from current files, install without dependencies, and read every resource."""
     repository_root = repository_root.resolve()
+    auth_replay_path = repository_root / _AUTH_REPLAY_RESOURCE
+    try:
+        auth_replay_source = auth_replay_path.read_bytes()
+    except OSError:
+        raise WheelResourceVerificationError("auth replay Lua source is unavailable") from None
+    if not auth_replay_source or b"\x00" in auth_replay_source:
+        raise WheelResourceVerificationError("auth replay Lua source is invalid")
+    auth_replay_digest = hashlib.sha256(auth_replay_source).hexdigest()
     with tempfile.TemporaryDirectory(prefix="a2amesh-wheel-resource-") as temporary:
         root = Path(temporary)
         source = root / "source"
@@ -74,9 +86,7 @@ def verify_wheel_resources(repository_root: Path) -> str:
         )
         wheels = tuple(distribution.glob("a2amesh-*.whl"))
         if len(wheels) != 1:
-            raise WheelResourceVerificationError(
-                f"expected one a2amesh wheel, found {len(wheels)}"
-            )
+            raise WheelResourceVerificationError(f"expected one a2amesh wheel, found {len(wheels)}")
 
         environment = root / "venv"
         venv.EnvBuilder(with_pip=True, clear=True).create(environment)
@@ -94,7 +104,8 @@ def verify_wheel_resources(repository_root: Path) -> str:
             root,
         )
         probe = textwrap.dedent(
-            """
+            f"""
+            import hashlib
             from importlib.resources import files
 
             from a2amesh.conformance import OFFICIAL_FIXTURE_FILES, read_official_fixture
@@ -108,7 +119,13 @@ def verify_wheel_resources(repository_root: Path) -> str:
             assert len(manifest["fixtures"]) == 7
             for name in OFFICIAL_FIXTURE_FILES:
                 assert isinstance(read_official_fixture(name), dict)
-            print("verified 8 wheel resources for 7 official A2A fixtures")
+            auth_replay_root = files("a2amesh.state.scripts")
+            auth_replay = auth_replay_root.joinpath("claim_auth_request.lua").read_bytes()
+            assert auth_replay.startswith(b"-- a2am.claim_auth_request.v1\\n")
+            assert b"\\x00" not in auth_replay
+            assert hashlib.sha256(auth_replay).hexdigest() == {auth_replay_digest!r}
+            message = "verified 8 wheel resources for 7 official A2A fixtures; "
+            print(message + "auth replay Lua sha256=" + hashlib.sha256(auth_replay).hexdigest())
             """
         )
         result = _run((str(python), "-I", "-c", probe), root)

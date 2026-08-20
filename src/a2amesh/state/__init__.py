@@ -12,6 +12,13 @@ _EXPORT_MODULES = {
     "RedisConfigError": ".config",
     "RedisClient": ".client",
     "RedisClientError": ".client",
+    "RedisNoScriptError": ".client",
+    "AuthReplayClaimError": ".script_runner",
+    "AuthReplayClaimRequest": ".script_runner",
+    "AuthReplayClaimResult": ".script_runner",
+    "AuthReplayClaimRunner": ".script_runner",
+    "auth_replay_script_sha1": ".script_runner",
+    "auth_replay_script_source": ".script_runner",
 }
 
 __all__ = tuple(_EXPORT_MODULES)

@@ -4,8 +4,9 @@ import asyncio
 import traceback
 
 import pytest
+from redis.exceptions import NoScriptError
 
-from a2amesh.state.client import RedisClient, RedisClientError
+from a2amesh.state.client import RedisClient, RedisClientError, RedisNoScriptError
 from a2amesh.state.config import RedisConfig, RedisConfigError
 
 
@@ -117,9 +118,7 @@ def test_redis_config_rejects_bad_environment_integers() -> None:
 
 
 def test_redis_config_repr_never_exposes_url_path_or_credentials() -> None:
-    rendered = repr(
-        RedisConfig(url="redis://user:path-secret@localhost:6379/db-secret")
-    )
+    rendered = repr(RedisConfig(url="redis://user:path-secret@localhost:6379/db-secret"))
     assert "user" not in rendered
     assert "path-secret" not in rendered
     assert "db-secret" not in rendered
@@ -187,9 +186,7 @@ async def test_close_failure_and_cancellation_retain_pool_for_retry() -> None:
     assert pool.closed is True
 
     cancelled_pool = FakePool(cancel_close=True)
-    cancelled = RedisClient(
-        RedisConfig(), redis_factory=FakeRedisFactory(cancelled_pool)
-    )
+    cancelled = RedisClient(RedisConfig(), redis_factory=FakeRedisFactory(cancelled_pool))
     await cancelled.connect()
     with pytest.raises(asyncio.CancelledError):
         await cancelled.close()
@@ -213,9 +210,7 @@ async def test_connect_cleanup_failure_preserves_primary_error_and_pool_ownershi
     assert raised.value.__context__ is None
     assert client._pool is pool
     rendered = "".join(
-        traceback.format_exception(
-            type(raised.value), raised.value, raised.value.__traceback__
-        )
+        traceback.format_exception(type(raised.value), raised.value, raised.value.__traceback__)
     )
     assert "secret" not in rendered
     pool.close_error = None
@@ -239,6 +234,35 @@ async def test_command_errors_never_expose_command_arguments_or_cause() -> None:
     with pytest.raises(RedisClientError, match="single token") as invalid:
         await client.execute("GET SECRET", b"payload-secret")
     assert "GET SECRET" not in str(invalid.value)
+
+
+@pytest.mark.asyncio
+async def test_client_maps_noscript_without_retaining_server_message_or_cause() -> None:
+    pool = FakePool(execute_error=NoScriptError("NOSCRIPT internal script details"))
+    client = RedisClient(RedisConfig(), redis_factory=FakeRedisFactory(pool))
+
+    with pytest.raises(RedisNoScriptError) as raised:
+        await client.execute("EVALSHA", "a" * 40, 0)
+
+    assert raised.value.__cause__ is None
+    assert raised.value.__context__ is None
+    assert "internal" not in str(raised.value)
+    assert pool.commands == [("EVALSHA", ("a" * 40, 0))]
+
+
+@pytest.mark.asyncio
+async def test_client_treats_noscript_from_non_evalsha_as_generic_redacted_failure() -> None:
+    pool = FakePool(execute_error=NoScriptError("NOSCRIPT internal script details"))
+    client = RedisClient(RedisConfig(), redis_factory=FakeRedisFactory(pool))
+
+    with pytest.raises(RedisClientError) as raised:
+        await client.execute("SCRIPT", "LOAD", b"untrusted script bytes")
+
+    assert type(raised.value) is RedisClientError
+    assert raised.value.__cause__ is None
+    assert raised.value.__context__ is None
+    assert "internal" not in str(raised.value)
+    assert pool.commands == [("SCRIPT", ("LOAD", b"untrusted script bytes"))]
 
 
 @pytest.mark.asyncio
