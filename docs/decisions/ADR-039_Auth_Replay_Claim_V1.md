@@ -1,9 +1,9 @@
 # ADR-039：C2 步骤3A0 AuthProof Replay Claim 基础设施
 
-> 状态：**Accepted for implementation candidate**
+> 状态：**Verified for C2 §9.3 步骤3A0 AuthProof replay claim**
 > 日期：2026-08-20
 > 适用范围：C2 / 《A2AMesh 开发实施计划》§9.3 步骤3 的 **A0 `claim_auth_request`**
-> 实现成熟度：本 ADR 只冻结第一个真实 Redis 原子垂直切片；尚未实现、门禁、独立复审或宣称完成完整 `claim_message`。
+> 实现成熟度：一 Key AuthProof replay claim 已实现、完成精确门禁并通过完整范围独立复审；不等于完整 `claim_message` 或 Redis State Service 整体验收。
 > 上游已验证 Key builder：`work/c2-state-key-builder`，代码 `eb254c0e24da2d1200475b1d2a8a07b323134658` / tree `f0df9a059e415f36569f5565e1b692c887c2c519`。
 
 ## 1. 目的、范围与权威边界
@@ -32,7 +32,20 @@ C2 §9.3 的下一项同时列出 `claim_auth_request` 与 `claim_message.lua`�
 
 本表是 ADR-039 创建时输入快照，不是滚动 manifest；后续实施状态记录不得回写、重算或替换本表。
 
-### 1.2 已有规范事实
+### 1.2 实现 checkpoint、门禁与独立复审证据
+
+截至 2026-08-20 17:45（Asia/Shanghai）本证据写回时，本 ADR 的 A0 已在连续代码链的最终精确树闭合：
+
+- A0 实现提交：`50ea076acdbc46953c5b397e730ac00d8ce823dc`；tree：`1757a34d642893518f3dad5a0624f1e04d30d114`；parent（本 ADR 合同提交）：`0f585f09eeccc684ae8d2b64e3f1224360ffe82a`。
+- CI schema 修复且最终验证的代码提交：`aeacd758c2146b3cc4bd52bec4c37b8c6568fd21`；tree：`ce49c3b7f0177cfcd6f63507c40ffd562326af61`；parent：`50ea076acdbc46953c5b397e730ac00d8ce823dc`；分支：`work/c2-state-claim-contract-p1-ci-schema`。
+- 闭合 payload 是 `0f585f0..aeacd75` 的完整 17 文件、`782 insertions(+), 21 deletions(-)`；它覆盖 Lua、runner、资源打包、unit/真实 Redis integration、CI contract 和最终 GitHub Actions Redis service schema 回归，不把仅 `HEAD^..HEAD` 的两文件修复误作完整 A0 审阅。
+- 精确本地门禁：`actionlint 1.7.12` 从 SHA-256 为 `8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8` 的官方 archive 重解包后通过；隔离 pinned Redis 默认命令为 `["redis-server"]`；A0 focused Redis/`SCRIPT FLUSH`/CI-contract 为 `18 passed`；`core-gates` 为 `8/8`；全量 pytest 为 `661 passed, 8 skipped`；结束时精确代码树 clean。
+- 权威完整范围独立复审：`deleg_166bd3c3`，`status=completed`、`exit_reason=completed`；自行绑定并复算同一 `HEAD/tree/parent`、完整 17 文件范围与 clean 状态，明确 `VERDICT=PASS`、`P1=0 P2=0 P3=0`。
+- 保留但不扩权的审阅历史：`deleg_8b868b58` 因 API timeout/`max_iterations` 无明确 verdict，故为 `INCONCLUSIVE`；Codex CLI read-only preflight 因 401 无 verdict，故为 `INCONCLUSIVE`；`deleg_56e9f2bb` 的 `PASS` 只审 `HEAD^..HEAD` 的 CI schema 修复，不能替代本节完整范围 verdict。
+
+以上 Verified 只覆盖受信入口后的一 Key `claim_auth_request` replay tombstone、其 Lua/runner/resource/测试和 CI schema 修复。它不覆盖 `claim_message`、Task/dedupe/admission/outbox/dispatch、Credential/Alias/Grant、业务结果 ledger、外部 wire mapping、多 Key Redis Cluster、Redis restart、NATS、生产 ACL/部署或生产就绪；这些边界仍由第4节、第5节和 `UD-039-001`～`UD-039-008` 约束。
+
+### 1.3 已有规范事实
 
 | 分类 | 规范事实 | 证据 |
 |---|---|---|
@@ -167,7 +180,7 @@ tests/integration/state/test_auth_replay_claim_redis.py
 
 ## 5. 非目标和验收边界
 
-A0 实现后也不得宣称已经完成：
+即使 A0 已在本 ADR 第1.2节所绑定的精确代码树获得 Verified，也不得宣称已经完成：
 
 - 完整 C2 §9.3 步骤3 或 `claim_message.lua`；
 - `resolve_principal`、Credential/Alias/Grant、capability 或 admission；

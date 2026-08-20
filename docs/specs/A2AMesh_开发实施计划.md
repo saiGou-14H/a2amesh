@@ -530,6 +530,8 @@ tests/unit/protocol/
 
 截至 2026-08-20，步骤3A0 已形成实现级补充合同 [`ADR-039`](../decisions/ADR-039_Auth_Replay_Claim_V1.md)：先以受信入口验证后的一 Key `claim_auth_request` 冻结 `SCRIPT LOAD`/`EVALSHA` ABI、replay tombstone、`NOSCRIPT` 单次安全重载和 fail-closed 边界。该 ADR 当前仅为 implementation candidate，尚无 Lua、runner、Redis gate、独立复审或推送；它明确不实现 `claim_message`、Task/dedupe/admission/outbox/dispatch、NATS 或 wire mapping。
 
+截至 2026-08-20 17:45（Asia/Shanghai），步骤3A0 的连续实现链已在最终代码 checkpoint `aeacd758c2146b3cc4bd52bec4c37b8c6568fd21`（tree `ce49c3b7f0177cfcd6f63507c40ffd562326af61`；A0 实现提交为 `50ea076acdbc46953c5b397e730ac00d8ce823dc`）完成闭合。精确 `0f585f0..aeacd75` 17 文件 payload 经 actionlint、隔离 pinned Redis 默认 `redis-server`、真实 A0 `SCRIPT FLUSH` focused `18 passed`、`core-gates` 8/8 和全量 `661 passed, 8 skipped` 门禁；`deleg_166bd3c3` 对同一完整范围以 `status=completed`、`exit_reason=completed` 返回 `VERDICT=PASS`、P1/P2/P3均为0。此前 timeout/max-iterations review 和 Codex 401 preflight 均保留为 `INCONCLUSIVE`，而仅审 CI repair 的 PASS 不替代完整范围审阅。该 Verified 仅适用于 A0 AuthProof replay claim，不实现或验收 `claim_message`、Task/dedupe/admission/outbox/dispatch、NATS/wire mapping、多 Key Cluster、重启或生产。
+
 ### 9.3 顺序
 
 1. Redis config 和 async client。
