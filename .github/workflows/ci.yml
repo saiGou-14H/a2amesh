@@ -19,6 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
+      A2AMESH_TEST_NATS_URL: nats://127.0.0.1:4222
       A2AMESH_TEST_REDIS_URL: redis://127.0.0.1:6379/15
       A2AMESH_TEST_REDIS_DESTRUCTIVE: "1"
     services:
@@ -39,10 +40,38 @@ jobs:
           python-version: "3.11"
       - name: Install locked test environment
         run: uv sync --locked --extra test --extra state
+      - name: Start NATS JetStream test broker
+        run: >-
+          docker run --detach --rm --name a2amesh-ci-nats
+          --publish 127.0.0.1:4222:4222
+          --health-cmd "wget -q --spider http://127.0.0.1:8222/healthz"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 10
+          nats@sha256:b83efabe3e7def1e0a4a31ec6e078999bb17c80363f881df35edc70fcb6bb927
+          -js -m 8222 -sd /tmp/a2amesh-ci-jetstream
+      - name: Wait for NATS JetStream test broker
+        run: |
+          for attempt in $(seq 1 30); do
+            status="$(docker inspect --format '{{.State.Health.Status}}' a2amesh-ci-nats)"
+            if [ "$status" = "healthy" ]; then
+              exit 0
+            fi
+            if [ "$status" = "unhealthy" ]; then
+              docker logs a2amesh-ci-nats
+              exit 1
+            fi
+            sleep 1
+          done
+          docker logs a2amesh-ci-nats
+          exit 1
       - name: Run machine-readable gates
         run: >-
           uv run --locked --extra test --extra state python scripts/run_ci.py
           --report .ci-artifacts/ci-report.json
+      - name: Stop NATS JetStream test broker
+        if: always()
+        run: docker rm --force a2amesh-ci-nats || true
       - name: Upload CI report
         if: always()
         uses: actions/upload-artifact@v4
